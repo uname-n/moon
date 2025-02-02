@@ -1,6 +1,6 @@
 // src/ast.rs
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Stmt {
     Expression(Expr),
     // A variable declaration such as: x:number = 42
@@ -33,7 +33,7 @@ pub enum Stmt {
     Print(Vec<Expr>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Expr {
     Number(f64),
     Bool(bool),
@@ -57,13 +57,13 @@ pub enum Expr {
     },
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum UnaryOp {
     Negate,
     Not,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum BinaryOp {
     Add,
     Subtract,
@@ -79,7 +79,7 @@ pub enum BinaryOp {
     Or,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum TypeAnnotation {
     // Builtin types such as "number" or "bool"
     Builtin(String),

@@ -1,4 +1,3 @@
-#![allow(clippy::unnecessary_wraps)]
 use crate::bytecode::Instruction;
 use crate::value::Value;
 use std::fmt;
@@ -133,25 +132,35 @@ impl VM {
                     }
                 }
                 Instruction::Call(_func_const_idx, arg_count) => {
-                    let func_val = self.stack.pop().expect("Expected function on stack");
-                    if let Value::Function(func) = func_val {
-                        let mut args = Vec::new();
-                        for _ in 0..*arg_count {
-                            args.push(self.stack.pop().ok_or(VMError::StackUnderflow)?);
+                    let func_val = self.stack.pop().ok_or(VMError::StackUnderflow)?;
+                    match func_val {
+                        Value::Function(func) => {
+                            let mut args = Vec::new();
+                            for _ in 0..*arg_count {
+                                args.push(self.stack.pop().ok_or(VMError::StackUnderflow)?);
+                            }
+                            args.reverse();
+                            let frame = CallFrame {
+                                code: func.code.clone(),
+                                ip: 0,
+                                constants: func.constants.clone(),
+                                locals: args,
+                                base: func.base,
+                            };
+                            self.call_stack.push(frame);
+                            let ret = self.run_frame()?;
+                            self.stack.push(ret);
                         }
-                        args.reverse();
-                        let frame = CallFrame {
-                            code: func.code.clone(),
-                            ip: 0,
-                            constants: func.constants.clone(),
-                            locals: args,
-                            base: func.base,
-                        };
-                        self.call_stack.push(frame);
-                        let ret = self.run_frame()?;
-                        self.stack.push(ret);
-                    } else {
-                        return Err(VMError::TypeError("Attempted to call a non-function".into()));
+                        Value::BuiltinFunction(_, f) => {
+                            let mut args = Vec::new();
+                            for _ in 0..*arg_count {
+                                args.push(self.stack.pop().ok_or(VMError::StackUnderflow)?);
+                            }
+                            args.reverse();
+                            let ret = f(&args)?;
+                            self.stack.push(ret);
+                        }
+                        _ => return Err(VMError::TypeError("Attempted to call a non-function".into())),
                     }
                 }
                 Instruction::Return => {
@@ -277,26 +286,36 @@ impl VM {
                         continue;
                     }
                 }
-                Instruction::Call(_func_const_idx, arg_count) => {
-                    let func_val = self.stack.pop().expect("Expected function on stack");
-                    if let Value::Function(func) = func_val {
-                        let mut args = Vec::new();
-                        for _ in 0..arg_count {
-                            args.push(self.stack.pop().ok_or(VMError::StackUnderflow)?);
+                Instruction::Call(_idx, arg_count) => {
+                    let func_val = self.stack.pop().ok_or(VMError::StackUnderflow)?;
+                    match func_val {
+                        Value::Function(func) => {
+                            let mut args = Vec::new();
+                            for _ in 0..arg_count {
+                                args.push(self.stack.pop().ok_or(VMError::StackUnderflow)?);
+                            }
+                            args.reverse();
+                            let new_frame = CallFrame {
+                                code: func.code.clone(),
+                                ip: 0,
+                                constants: func.constants.clone(),
+                                locals: args,
+                                base: func.base,
+                            };
+                            self.call_stack.push(new_frame);
+                            let ret = self.run_frame()?;
+                            self.stack.push(ret);
                         }
-                        args.reverse();
-                        let new_frame = CallFrame {
-                            code: func.code.clone(),
-                            ip: 0,
-                            constants: func.constants.clone(),
-                            locals: args,
-                            base: func.base,
-                        };
-                        self.call_stack.push(new_frame);
-                        let ret = self.run_frame()?;
-                        self.stack.push(ret);
-                    } else {
-                        return Err(VMError::TypeError("Attempted to call a non-function".into()));
+                        Value::BuiltinFunction(_, f) => {
+                            let mut args = Vec::new();
+                            for _ in 0..arg_count {
+                                args.push(self.stack.pop().ok_or(VMError::StackUnderflow)?);
+                            }
+                            args.reverse();
+                            let ret = f(&args)?;
+                            self.stack.push(ret);
+                        }
+                        _ => return Err(VMError::TypeError("Attempted to call a non-function".into())),
                     }
                 }
                 Instruction::Pop => {

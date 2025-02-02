@@ -103,10 +103,11 @@ impl Compiler {
                 self.code.push(Instruction::Return);
             }
             Stmt::Print(args) => {
-                for arg in args {
-                    self.compile_expr(arg);
-                }
-                self.code.push(Instruction::Call(0, args.len()));
+                let expr = Expr::Call {
+                    callee: Box::new(Expr::Identifier("print".to_string())),
+                    arguments: args.clone(),
+                };
+                self.compile_expr(&expr);
             }
         }
     }

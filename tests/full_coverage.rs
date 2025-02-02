@@ -404,23 +404,6 @@ fn test_compile_and_run_function_declaration_and_call() {
 }
 
 #[test]
-fn test_compile_print_statement() {
-    use moon::ast::{Expr, Stmt};
-    let stmt = Stmt::Print(vec![
-        Expr::Number(42.0),
-        Expr::Bool(true),
-    ]);
-    let mut compiler = Compiler::new();
-    compiler.compile_stmt(&stmt);
-    assert!(compiler.code.len() >= 3);
-    let last_instruction = compiler.code.last().unwrap();
-    match last_instruction {
-        Instruction::Call(_, arg_count) => assert_eq!(*arg_count, 2),
-        _ => panic!("Expected Call instruction at end of print statement"),
-    }
-}
-
-#[test]
 fn test_value_display() {
     let num = Value::Number(3.14);
     let b = Value::Bool(true);

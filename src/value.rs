@@ -5,6 +5,8 @@ pub enum Value {
     Number(f64),
     Bool(bool),
     Function(Function),
+    BuiltinFunction(String, fn(&[Value]) -> Result<Value, crate::vm::VMError>),
+    Str(String),
 }
 
 impl std::fmt::Display for Value {
@@ -13,6 +15,8 @@ impl std::fmt::Display for Value {
             Value::Number(n) => write!(f, "{}", n),
             Value::Bool(b) => write!(f, "{}", b),
             Value::Function(func) => write!(f, "<fn {}>", func.name),
+            Value::BuiltinFunction(name, _) => write!(f, "<builtin {}>", name),
+            Value::Str(s) => write!(f, "{}", s),
         }
     }
 }
