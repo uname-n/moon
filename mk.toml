@@ -1,1 +1,1 @@
-context.commands=["cargo context", "git log >> Context.md", "cargo test >> Context.md"]
+context.commands=["cargo context", "git log >> Context.md"]#, "cargo test >> Context.md"]

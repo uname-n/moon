@@ -135,12 +135,24 @@ impl Compiler {
             }
             Stmt::Return(expr_opt) => {
                 if let Some(expr) = expr_opt {
-                    self.compile_expr(expr);
+                    match expr {
+                        Expr::Call { callee, arguments } => {
+                            self.compile_expr(callee);
+                            for arg in arguments.iter() {
+                                self.compile_expr(arg);
+                            }
+                            self.code.push(Instruction::TailCall(0, arguments.len()));
+                        }
+                        _ => {
+                            self.compile_expr(expr);
+                            self.code.push(Instruction::Return);
+                        }
+                    }
                 } else {
                     let idx = self.add_constant(Value::Number(0.0));
                     self.code.push(Instruction::LoadConst(idx));
+                    self.code.push(Instruction::Return);
                 }
-                self.code.push(Instruction::Return);
             }
             Stmt::Print(args) => {
                 self.code.push(Instruction::LoadGlobal("print".to_string()));
