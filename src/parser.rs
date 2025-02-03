@@ -50,11 +50,6 @@ impl<'a> Parser<'a> {
         let mut stmts = Vec::new();
         while self.pos < self.tokens.len() {
             let st = self.parse_statement()?;
-            if let Stmt::Expression(Expr::Number(_)) = &st {
-                if let Some(Token::Number(_)) = self.current() {
-                    return Err(ParserError("Extra tokens after program".into()));
-                }
-            }
             stmts.push(st);
         }
         Ok(stmts)
@@ -64,6 +59,7 @@ impl<'a> Parser<'a> {
         match self.current() {
             Some(Token::Fn) => self.parse_function_declaration(),
             Some(Token::If) => self.parse_if_statement(),
+            Some(Token::While) => self.parse_while_statement(),
             Some(Token::Return) => self.parse_return_statement(),
             Some(Token::Print) => self.parse_print_statement(),
             Some(Token::Identifier(_)) => {
@@ -133,6 +129,15 @@ impl<'a> Parser<'a> {
             None
         };
         Ok(Stmt::If { condition, then_branch, else_branch })
+    }
+    
+    fn parse_while_statement(&mut self) -> Result<Stmt, ParserError> {
+        self.expect(&Token::While)?;
+        self.expect(&Token::LParen)?;
+        let condition = self.parse_expression()?;
+        self.expect(&Token::RParen)?;
+        let body = self.parse_block()?;
+        Ok(Stmt::While { condition, body })
     }
     
     fn parse_function_declaration(&mut self) -> Result<Stmt, ParserError> {
@@ -361,6 +366,10 @@ impl<'a> Parser<'a> {
                 Token::False => {
                     self.advance();
                     Ok(Expr::Bool(false))
+                }
+                Token::StringLiteral(s) => {
+                    self.advance();
+                    Ok(Expr::Str(s))
                 }
                 Token::Identifier(s) => {
                     self.advance();

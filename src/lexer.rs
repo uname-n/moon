@@ -4,6 +4,7 @@ pub enum Token {
     True,
     False,
     Identifier(String),
+    StringLiteral(String),
 
     Plus,
     Minus,
@@ -29,6 +30,7 @@ pub enum Token {
     Fn,
     If,
     Else,
+    While,
     Return,
     Print,
 }
@@ -47,10 +49,24 @@ impl std::error::Error for LexerError {}
 pub fn tokenize(input: &str) -> Result<Vec<Token>, LexerError> {
     let mut tokens = Vec::new();
     let mut chars = input.chars().peekable();
-    
+
     while let Some(&ch) = chars.peek() {
         match ch {
             c if c.is_whitespace() => { chars.next(); }
+            '"' => {
+                chars.next(); // consume opening quote
+                let mut s = String::new();
+                while let Some(&c) = chars.peek() {
+                    if c == '"' {
+                        chars.next(); // consume closing quote
+                        break;
+                    } else {
+                        s.push(c);
+                        chars.next();
+                    }
+                }
+                tokens.push(Token::StringLiteral(s));
+            }
             '0'..='9' => {
                 let mut num_str = String::new();
                 while let Some(&c) = chars.peek() {
@@ -139,13 +155,13 @@ pub fn tokenize(input: &str) -> Result<Vec<Token>, LexerError> {
                         break;
                     }
                 }
-                // check for keywords:
                 match ident.as_str() {
                     "true" => tokens.push(Token::True),
                     "false" => tokens.push(Token::False),
                     "fn" => tokens.push(Token::Fn),
                     "if" => tokens.push(Token::If),
                     "else" => tokens.push(Token::Else),
+                    "while" => tokens.push(Token::While),
                     "return" => tokens.push(Token::Return),
                     "print" => tokens.push(Token::Print),
                     _ => tokens.push(Token::Identifier(ident)),

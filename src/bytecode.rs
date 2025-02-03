@@ -1,8 +1,5 @@
-// src/bytecode.rs
-
 #[derive(Debug, Clone, PartialEq)]
 pub enum Instruction {
-    // Push a constant onto the stack
     LoadConst(usize),
 
     // Arithmetic and unary ops
@@ -13,6 +10,11 @@ pub enum Instruction {
     Negate,
     Not,
     Equal,
+    NotEqual,
+    Less,
+    Greater,
+    LessEqual,
+    GreaterEqual,
 
     // Local variable access by numeric slot
     LoadLocal(usize),
@@ -22,12 +24,16 @@ pub enum Instruction {
     LoadGlobal(String),
     StoreGlobal(String),
 
+    // Closure variable access by name
+    LoadClosure(String),
+    StoreClosure(String),
+
     // Control flow
     Jump(usize),
     JumpIfFalse(usize),
+    JumpIfTrue(usize),
 
     // Function call & return
-    // (Function object is typically in the constants array, or could be on stack)
     Call(usize, usize),
     Return,
 

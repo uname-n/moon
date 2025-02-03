@@ -1,4 +1,5 @@
 use crate::bytecode::Instruction;
+use std::collections::HashMap;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {
@@ -27,5 +28,6 @@ pub struct Function {
     pub params: Vec<String>,
     pub code: Vec<Instruction>,
     pub constants: Vec<Value>,
-    pub base: usize,
+    pub base: usize, // rename to `_base` if desired
+    pub closure: Option<HashMap<String, Value>>,
 }

@@ -150,6 +150,7 @@ fn test_vm_local_variable() {
         code: func_code,
         constants: func_constants,
         base: 0,
+        closure: None, // <-- Added
     });
     let instructions = vec![
         Instruction::LoadConst(0),
@@ -189,6 +190,7 @@ fn test_vm_function_call() {
         code: func_code,
         constants: func_constants,
         base: 0,
+        closure: None, // <-- Added
     });
     let instructions = vec![
         Instruction::LoadConst(0),
@@ -352,18 +354,6 @@ fn test_compile_binary_divide() {
 }
 
 #[test]
-#[should_panic(expected = "Operator not implemented in compiler")]
-fn test_compile_binary_unimplemented_operator() {
-    let mut compiler = Compiler::new();
-    let expr = ast::Expr::Binary {
-        left: Box::new(ast::Expr::Number(1.0)),
-        op: ast::BinaryOp::NotEqual,
-        right: Box::new(ast::Expr::Number(1.0)),
-    };
-    compiler.compile_expr(&expr);
-}
-
-#[test]
 fn test_compile_and_run_variable_assignment() {
     use moon::ast::{Expr, Stmt, TypeAnnotation};
     let stmts = vec![
@@ -441,6 +431,7 @@ fn test_value_function_display() {
         code: vec![],
         constants: vec![],
         base: 0,
+        closure: None,
     });
     assert!(func.to_string().contains("<fn foo>"));
 }

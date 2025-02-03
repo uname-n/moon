@@ -48,8 +48,8 @@ fn main() {
     compiler.compile_program(&ast);
 
     match vm.run(&compiler.code, &compiler.constants) {
-        Ok(result) => {
-            println!("Program result: {}", result);
+        Ok(_result) => {
+            // println!("Program result: {}", result);
         }
         Err(e) => {
             match e {
