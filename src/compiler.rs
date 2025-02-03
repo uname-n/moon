@@ -24,6 +24,7 @@ impl Compiler {
         for stmt in stmts {
             self.compile_stmt(stmt);
         }
+        self.code.push(Instruction::Return);
     }
 
     fn add_constant(&mut self, value: Value) -> usize {

@@ -1,4 +1,5 @@
 use std::panic;
+use std::sync::Arc;
 
 use moon::{
     ast,
@@ -15,11 +16,13 @@ use moon::value::Function;
 #[test]
 fn test_vm_add() {
     let mut vm = VM::new();
-    let instructions = vec![
+    let mut instructions = vec![
         Instruction::LoadConst(0),
         Instruction::LoadConst(1),
         Instruction::Add,
     ];
+    // Push a Return so that the top–level frame ends.
+    instructions.push(Instruction::Return);
     let constants = vec![Value::Number(1.0), Value::Number(2.0)];
     let result = vm.run(&instructions, &constants).unwrap();
     assert_eq!(result, Value::Number(3.0));
@@ -28,11 +31,12 @@ fn test_vm_add() {
 #[test]
 fn test_vm_sub() {
     let mut vm = VM::new();
-    let instructions = vec![
+    let mut instructions = vec![
         Instruction::LoadConst(0),
         Instruction::LoadConst(1),
         Instruction::Sub,
     ];
+    instructions.push(Instruction::Return);
     let constants = vec![Value::Number(5.0), Value::Number(3.0)];
     let result = vm.run(&instructions, &constants).unwrap();
     assert_eq!(result, Value::Number(2.0));
@@ -41,11 +45,12 @@ fn test_vm_sub() {
 #[test]
 fn test_vm_mul() {
     let mut vm = VM::new();
-    let instructions = vec![
+    let mut instructions = vec![
         Instruction::LoadConst(0),
         Instruction::LoadConst(1),
         Instruction::Mul,
     ];
+    instructions.push(Instruction::Return);
     let constants = vec![Value::Number(4.0), Value::Number(3.0)];
     let result = vm.run(&instructions, &constants).unwrap();
     assert_eq!(result, Value::Number(12.0));
@@ -54,11 +59,12 @@ fn test_vm_mul() {
 #[test]
 fn test_vm_division() {
     let mut vm = VM::new();
-    let instructions = vec![
+    let mut instructions = vec![
         Instruction::LoadConst(0),
         Instruction::LoadConst(1),
         Instruction::Div,
     ];
+    instructions.push(Instruction::Return);
     let constants = vec![Value::Number(6.0), Value::Number(2.0)];
     let result = vm.run(&instructions, &constants).unwrap();
     assert_eq!(result, Value::Number(3.0));
@@ -67,11 +73,12 @@ fn test_vm_division() {
 #[test]
 fn test_vm_division_by_zero() {
     let mut vm = VM::new();
-    let instructions = vec![
+    let mut instructions = vec![
         Instruction::LoadConst(0),
         Instruction::LoadConst(1),
         Instruction::Div,
     ];
+    instructions.push(Instruction::Return);
     let constants = vec![Value::Number(6.0), Value::Number(0.0)];
     let result = vm.run(&instructions, &constants);
     assert_eq!(result, Err(VMError::DivisionByZero));
@@ -80,7 +87,8 @@ fn test_vm_division_by_zero() {
 #[test]
 fn test_vm_negate() {
     let mut vm = VM::new();
-    let instructions = vec![Instruction::LoadConst(0), Instruction::Negate];
+    let mut instructions = vec![Instruction::LoadConst(0), Instruction::Negate];
+    instructions.push(Instruction::Return);
     let constants = vec![Value::Number(5.0)];
     let result = vm.run(&instructions, &constants).unwrap();
     assert_eq!(result, Value::Number(-5.0));
@@ -89,7 +97,8 @@ fn test_vm_negate() {
 #[test]
 fn test_vm_not() {
     let mut vm = VM::new();
-    let instructions = vec![Instruction::LoadConst(0), Instruction::Not];
+    let mut instructions = vec![Instruction::LoadConst(0), Instruction::Not];
+    instructions.push(Instruction::Return);
     let constants = vec![Value::Bool(false)];
     let result = vm.run(&instructions, &constants).unwrap();
     assert_eq!(result, Value::Bool(true));
@@ -98,11 +107,12 @@ fn test_vm_not() {
 #[test]
 fn test_vm_type_error_add() {
     let mut vm = VM::new();
-    let instructions = vec![
+    let mut instructions = vec![
         Instruction::LoadConst(0),
         Instruction::LoadConst(1),
         Instruction::Add,
     ];
+    instructions.push(Instruction::Return);
     let constants = vec![Value::Bool(true), Value::Number(2.0)];
     let result = vm.run(&instructions, &constants);
     assert!(matches!(result, Err(VMError::TypeError(_))));
@@ -111,7 +121,8 @@ fn test_vm_type_error_add() {
 #[test]
 fn test_vm_type_error_not() {
     let mut vm = VM::new();
-    let instructions = vec![Instruction::LoadConst(0), Instruction::Not];
+    let mut instructions = vec![Instruction::LoadConst(0), Instruction::Not];
+    instructions.push(Instruction::Return);
     let constants = vec![Value::Number(1.0)];
     let result = vm.run(&instructions, &constants);
     assert!(matches!(result, Err(VMError::TypeError(_))));
@@ -120,7 +131,8 @@ fn test_vm_type_error_not() {
 #[test]
 fn test_vm_load_const_error() {
     let mut vm = VM::new();
-    let instructions = vec![Instruction::LoadConst(1)];
+    let mut instructions = vec![Instruction::LoadConst(1)];
+    instructions.push(Instruction::Return);
     let constants = vec![Value::Number(1.0)];
     let result = vm.run(&instructions, &constants);
     assert!(matches!(result, Err(VMError::TypeError(ref s)) if s.contains("No constant at index")));
@@ -129,7 +141,8 @@ fn test_vm_load_const_error() {
 #[test]
 fn test_vm_stack_underflow() {
     let mut vm = VM::new();
-    let instructions = vec![Instruction::Add];
+    let mut instructions = vec![Instruction::Add];
+    instructions.push(Instruction::Return);
     let constants = vec![];
     let result = vm.run(&instructions, &constants);
     assert!(matches!(result, Err(VMError::StackUnderflow)));
@@ -147,15 +160,16 @@ fn test_vm_local_variable() {
     let function = Value::Function(Function {
         name: "local_test".to_string(),
         params: vec![],
-        code: func_code,
-        constants: func_constants,
+        code: Arc::new(func_code),
+        constants: Arc::new(func_constants),
         base: 0,
-        closure: None, // <-- Added
+        closure: None,
     });
-    let instructions = vec![
+    let mut instructions = vec![
         Instruction::LoadConst(0),
         Instruction::Call(0, 0),
     ];
+    instructions.push(Instruction::Return);
     let constants = vec![function];
     let mut vm = VM::new();
     let result = vm.run(&instructions, &constants).unwrap();
@@ -164,13 +178,15 @@ fn test_vm_local_variable() {
 
 #[test]
 fn test_vm_if_statement() {
-    let instructions = vec![
+    // In this test, note that the jump targets are hardcoded.
+    let mut instructions = vec![
         Instruction::LoadConst(0),
         Instruction::JumpIfFalse(4),
         Instruction::LoadConst(1),
         Instruction::Jump(5),
         Instruction::LoadConst(2),
     ];
+    instructions.push(Instruction::Return);
     let constants = vec![Value::Bool(false), Value::Number(1.0), Value::Number(2.0)];
     let mut vm = VM::new();
     let result = vm.run(&instructions, &constants).unwrap();
@@ -187,15 +203,16 @@ fn test_vm_function_call() {
     let function = Value::Function(Function {
         name: "const10".to_string(),
         params: vec![],
-        code: func_code,
-        constants: func_constants,
+        code: Arc::new(func_code),
+        constants: Arc::new(func_constants),
         base: 0,
-        closure: None, // <-- Added
+        closure: None,
     });
-    let instructions = vec![
+    let mut instructions = vec![
         Instruction::LoadConst(0),
         Instruction::Call(0, 0),
     ];
+    instructions.push(Instruction::Return);
     let constants = vec![function];
     let mut vm = VM::new();
     let result = vm.run(&instructions, &constants).unwrap();
@@ -205,14 +222,17 @@ fn test_vm_function_call() {
 #[test]
 fn test_vm_call_non_function() {
     let mut vm = VM::new();
-    let instructions = vec![
+    let mut instructions = vec![
         Instruction::LoadConst(0),
         Instruction::Call(0, 0),
     ];
+    instructions.push(Instruction::Return);
     let constants = vec![Value::Number(42.0)];
     let result = vm.run(&instructions, &constants);
     assert!(matches!(result, Err(VMError::TypeError(_))));
 }
+
+// --- Compiler tests remain mostly the same (assuming your compile_program now pushes a Return) ---
 
 #[test]
 fn test_compile_number() {
@@ -428,8 +448,8 @@ fn test_value_function_display() {
     let func = Value::Function(Function {
         name: "foo".to_string(),
         params: vec!["a".to_string(), "b".to_string()],
-        code: vec![],
-        constants: vec![],
+        code: Arc::new(vec![]),
+        constants: Arc::new(vec![]),
         base: 0,
         closure: None,
     });
@@ -888,4 +908,203 @@ fn test_top_level_compiler_assignment_instructions() {
     } else {
         panic!("No instructions generated");
     }
+}
+
+#[test]
+fn test_vm_tail_call_user_function() {
+    let g_instructions = vec![
+        Instruction::LoadConst(0),
+        Instruction::Return,
+    ];
+    let g_constants = vec![Value::Number(99.0)];
+    let function_g = Value::Function(Function {
+        name: "g".to_string(),
+        params: vec![],
+        code: Arc::new(g_instructions),
+        constants: Arc::new(g_constants),
+        base: 0,
+        closure: None,
+    });
+    let f_instructions = vec![
+        Instruction::LoadConst(0),
+        Instruction::TailCall(0, 0),
+    ];
+    let f_constants = vec![function_g.clone()];
+    let function_f = Value::Function(Function {
+        name: "f".to_string(),
+        params: vec![],
+        code: Arc::new(f_instructions),
+        constants: Arc::new(f_constants),
+        base: 0,
+        closure: None,
+    });
+    let mut instructions = vec![
+        Instruction::LoadConst(0),
+        Instruction::Call(0, 0),
+    ];
+    instructions.push(Instruction::Return);
+    let constants = vec![function_f];
+    let mut vm = VM::new();
+    let result = vm.run(&instructions, &constants).unwrap();
+    assert_eq!(result, Value::Number(99.0));
+}
+
+#[test]
+fn test_vm_tail_call_builtin_function() {
+    let builtin_dummy = Value::BuiltinFunction("dummy".to_string(), |args: &[Value]| -> Result<Value, VMError> {
+        Ok(Value::Number(123.0))
+    });
+    let f_instructions = vec![
+        Instruction::LoadConst(0),
+        Instruction::TailCall(0, 0),
+    ];
+    let f_constants = vec![builtin_dummy.clone()];
+    let function_f = Value::Function(Function {
+        name: "f".to_string(),
+        params: vec![],
+        code: Arc::new(f_instructions),
+        constants: Arc::new(f_constants),
+        base: 0,
+        closure: None,
+    });
+    let mut instructions = vec![
+        Instruction::LoadConst(0),
+        Instruction::Call(0, 0),
+    ];
+    instructions.push(Instruction::Return);
+    let constants = vec![function_f];
+    let mut vm = VM::new();
+    let result = vm.run(&instructions, &constants).unwrap();
+    assert_eq!(result, Value::Number(123.0));
+}
+
+#[test]
+fn test_compile_and_run_while_loop() {
+    use moon::ast::{Stmt, Expr, BinaryOp, TypeAnnotation};
+    let stmts = vec![
+        Stmt::VariableDeclaration {
+            name: "x".to_string(),
+            var_type: TypeAnnotation::Builtin("number".to_string()),
+            initializer: Some(Expr::Number(0.0)),
+        },
+        Stmt::While {
+            condition: Expr::Binary {
+                left: Box::new(Expr::Identifier("x".to_string())),
+                op: BinaryOp::Less,
+                right: Box::new(Expr::Number(3.0)),
+            },
+            body: vec![
+                Stmt::Assignment {
+                    name: "x".to_string(),
+                    expr: Expr::Binary {
+                        left: Box::new(Expr::Identifier("x".to_string())),
+                        op: BinaryOp::Add,
+                        right: Box::new(Expr::Number(1.0)),
+                    },
+                },
+            ],
+        },
+        Stmt::Expression(Expr::Identifier("x".to_string())),
+    ];
+    let mut compiler = Compiler::new();
+    compiler.compile_program(&stmts);
+    let mut vm = VM::new();
+    let result = vm.run(&compiler.code, &compiler.constants).unwrap();
+    assert_eq!(result, Value::Number(3.0));
+}
+
+#[test]
+fn test_compile_string_literal() {
+    let mut compiler = Compiler::new();
+    let expr = moon::ast::Expr::Str("hello".to_string());
+    compiler.compile_expr(&expr);
+    assert_eq!(compiler.code.len(), 1);
+    match compiler.code[0] {
+        Instruction::LoadConst(0) => {},
+        _ => panic!("Expected LoadConst instruction"),
+    }
+    assert_eq!(compiler.constants, vec![Value::Str("hello".to_string())]);
+}
+
+#[test]
+fn test_vm_closure() {
+    use std::collections::HashMap;
+    let mut c = HashMap::new();
+    c.insert("a".to_string(), Value::Number(777.0));
+    let instructions = vec![
+        Instruction::LoadClosure("a".to_string()),
+        Instruction::Return,
+    ];
+    let constants = vec![];
+    let function = Value::Function(Function {
+        name: "closure_test".to_string(),
+        params: vec![],
+        code: Arc::new(instructions),
+        constants: Arc::new(constants),
+        base: 0,
+        closure: Some(c),
+    });
+    let mut call_instructions = vec![
+        Instruction::LoadConst(0),
+        Instruction::Call(0, 0),
+    ];
+    call_instructions.push(Instruction::Return);
+    let call_constants = vec![function];
+    let mut vm = VM::new();
+    let result = vm.run(&call_instructions, &call_constants).unwrap();
+    assert_eq!(result, Value::Number(777.0));
+}
+
+#[test]
+fn test_vm_comparisons() {
+    let mut vm = VM::new();
+    let mut instructions = vec![
+        Instruction::LoadConst(0),
+        Instruction::LoadConst(1),
+        Instruction::Less,
+    ];
+    instructions.push(Instruction::Return);
+    let constants = vec![Value::Number(3.0), Value::Number(5.0)];
+    let result = vm.run(&instructions, &constants).unwrap();
+    assert_eq!(result, Value::Bool(true));
+    
+    let mut instructions = vec![
+        Instruction::LoadConst(0),
+        Instruction::LoadConst(1),
+        Instruction::Greater,
+    ];
+    instructions.push(Instruction::Return);
+    let constants = vec![Value::Number(3.0), Value::Number(5.0)];
+    let result = vm.run(&instructions, &constants).unwrap();
+    assert_eq!(result, Value::Bool(false));
+    
+    let mut instructions = vec![
+        Instruction::LoadConst(0),
+        Instruction::LoadConst(1),
+        Instruction::LessEqual,
+    ];
+    instructions.push(Instruction::Return);
+    let constants = vec![Value::Number(3.0), Value::Number(3.0)];
+    let result = vm.run(&instructions, &constants).unwrap();
+    assert_eq!(result, Value::Bool(true));
+    
+    let mut instructions = vec![
+        Instruction::LoadConst(0),
+        Instruction::LoadConst(1),
+        Instruction::GreaterEqual,
+    ];
+    instructions.push(Instruction::Return);
+    let constants = vec![Value::Number(3.0), Value::Number(5.0)];
+    let result = vm.run(&instructions, &constants).unwrap();
+    assert_eq!(result, Value::Bool(false));
+    
+    let mut instructions = vec![
+        Instruction::LoadConst(0),
+        Instruction::LoadConst(1),
+        Instruction::NotEqual,
+    ];
+    instructions.push(Instruction::Return);
+    let constants = vec![Value::Number(3.0), Value::Number(5.0)];
+    let result = vm.run(&instructions, &constants).unwrap();
+    assert_eq!(result, Value::Bool(true));
 }
