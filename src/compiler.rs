@@ -6,6 +6,7 @@ pub struct Compiler {
     pub code: Vec<Instruction>,
     pub constants: Vec<Value>,
     pub variables: Vec<String>,
+    pub is_top_level: bool,
 }
 
 impl Compiler {
@@ -14,15 +15,25 @@ impl Compiler {
             code: Vec::new(),
             constants: Vec::new(),
             variables: Vec::new(),
+            is_top_level: true,
         }
     }
-    
+
     pub fn compile_program(&mut self, stmts: &[Stmt]) {
         for stmt in stmts {
             self.compile_stmt(stmt);
         }
     }
-    
+
+    fn add_constant(&mut self, value: Value) -> usize {
+        self.constants.push(value);
+        self.constants.len() - 1
+    }
+
+    fn find_local(&self, name: &str) -> Option<usize> {
+        self.variables.iter().position(|n| n == name)
+    }
+
     pub fn compile_stmt(&mut self, stmt: &Stmt) {
         match stmt {
             Stmt::Expression(expr) => {
@@ -35,63 +46,61 @@ impl Compiler {
                     let idx = self.add_constant(Value::Number(0.0));
                     self.code.push(Instruction::LoadConst(idx));
                 }
-                self.variables.push(name.clone());
-                let var_index = self.variables.len() - 1;
-                self.code.push(Instruction::StoreVar(var_index));
+                if self.is_top_level {
+                    self.code.push(Instruction::StoreGlobal(name.clone()));
+                } else {
+                    let local_idx = self.variables.len();
+                    self.variables.push(name.clone());
+                    self.code.push(Instruction::StoreLocal(local_idx));
+                }
             }
             Stmt::Assignment { name, expr } => {
                 self.compile_expr(expr);
-                if let Some(var_index) = self.variables.iter().position(|n| n == name) {
-                    self.code.push(Instruction::StoreVar(var_index));
+                if let Some(local_idx) = self.find_local(name) {
+                    self.code.push(Instruction::StoreLocal(local_idx));
                 } else {
-                    panic!("Undefined variable {}", name);
+                    self.code.push(Instruction::StoreGlobal(name.clone()));
                 }
             }
             Stmt::If { condition, then_branch, else_branch } => {
                 self.compile_expr(condition);
-                let jump_if_false_index = self.code.len();
+                let jump_if_false_idx = self.code.len();
                 self.code.push(Instruction::JumpIfFalse(0));
                 for s in then_branch {
                     self.compile_stmt(s);
                 }
-                let jump_index = self.code.len();
+                let jump_idx = self.code.len();
                 self.code.push(Instruction::Jump(0));
                 let else_start = self.code.len();
-                self.code[jump_if_false_index] = Instruction::JumpIfFalse(else_start);
+                self.code[jump_if_false_idx] = Instruction::JumpIfFalse(else_start);
                 if let Some(else_stmts) = else_branch {
                     for s in else_stmts {
                         self.compile_stmt(s);
                     }
                 }
                 let after_else = self.code.len();
-                self.code[jump_index] = Instruction::Jump(after_else);
+                self.code[jump_idx] = Instruction::Jump(after_else);
             }
             Stmt::FunctionDeclaration { name, params, body, .. } => {
-                let global_index = self.variables.len();
-                self.variables.push(name.clone());
                 let mut func_compiler = Compiler::new();
-                func_compiler.variables = self.variables.clone();
-                let base = func_compiler.variables.len();
-                for (param, _) in params {
-                    func_compiler.variables.push(param.clone());
-                }
+                func_compiler.is_top_level = false;
+                func_compiler.variables = params.iter().map(|(p, _)| p.clone()).collect();
                 for stmt in body {
                     func_compiler.compile_stmt(stmt);
                 }
-                let const_index = func_compiler.add_constant(Value::Number(0.0));
-                func_compiler.code.push(Instruction::LoadConst(const_index));
+                let zero_idx = func_compiler.add_constant(Value::Number(0.0));
+                func_compiler.code.push(Instruction::LoadConst(zero_idx));
                 func_compiler.code.push(Instruction::Return);
-                let param_names = params.iter().map(|(s, _)| s.clone()).collect();
-                let function = Function {
+                let function_val = Value::Function(Function {
                     name: name.clone(),
-                    params: param_names,
+                    params: params.iter().map(|(p, _)| p.clone()).collect(),
                     code: func_compiler.code,
                     constants: func_compiler.constants,
-                    base,
-                };
-                let func_const = self.add_constant(Value::Function(function));
-                self.code.push(Instruction::LoadConst(func_const));
-                self.code.push(Instruction::StoreVar(global_index));
+                    base: 0,
+                });
+                let const_idx = self.add_constant(function_val);
+                self.code.push(Instruction::LoadConst(const_idx));
+                self.code.push(Instruction::StoreGlobal(name.clone()));
             }
             Stmt::Return(expr_opt) => {
                 if let Some(expr) = expr_opt {
@@ -103,15 +112,15 @@ impl Compiler {
                 self.code.push(Instruction::Return);
             }
             Stmt::Print(args) => {
-                let expr = Expr::Call {
-                    callee: Box::new(Expr::Identifier("print".to_string())),
-                    arguments: args.clone(),
-                };
-                self.compile_expr(&expr);
+                for arg in args.iter().rev() {
+                    self.compile_expr(arg);
+                }
+                self.code.push(Instruction::LoadGlobal("print".to_string()));
+                self.code.push(Instruction::Call(0, args.len()));
             }
         }
     }
-    
+
     pub fn compile_expr(&mut self, expr: &Expr) {
         match expr {
             Expr::Number(n) => {
@@ -123,10 +132,10 @@ impl Compiler {
                 self.code.push(Instruction::LoadConst(idx));
             }
             Expr::Identifier(name) => {
-                if let Some(var_index) = self.variables.iter().position(|n| n == name) {
-                    self.code.push(Instruction::LoadVar(var_index));
+                if let Some(local_idx) = self.find_local(name) {
+                    self.code.push(Instruction::LoadLocal(local_idx));
                 } else {
-                    panic!("Undefined variable {}", name);
+                    self.code.push(Instruction::LoadGlobal(name.clone()));
                 }
             }
             Expr::Unary { op, expr } => {
@@ -144,14 +153,7 @@ impl Compiler {
                     BinaryOp::Subtract => self.code.push(Instruction::Sub),
                     BinaryOp::Multiply => self.code.push(Instruction::Mul),
                     BinaryOp::Divide => self.code.push(Instruction::Div),
-                    BinaryOp::Equal => {
-                        if let (Expr::Number(n1), Expr::Number(n2)) = (&**left, &**right) {
-                            if *n1 == 1.0 && *n2 == 1.0 {
-                                unimplemented!("Operator not implemented in compiler");
-                            }
-                        }
-                        self.code.push(Instruction::Equal);
-                    }
+                    BinaryOp::Equal => self.code.push(Instruction::Equal),
                     _ => unimplemented!("Operator not implemented in compiler"),
                 }
             }
@@ -163,10 +165,5 @@ impl Compiler {
                 self.code.push(Instruction::Call(0, arguments.len()));
             }
         }
-    }
-    
-    fn add_constant(&mut self, value: Value) -> usize {
-        self.constants.push(value);
-        self.constants.len() - 1
     }
 }

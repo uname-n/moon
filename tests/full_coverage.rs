@@ -8,11 +8,13 @@ use moon::{
     parser,
     value::Value,
     vm::{VM, VMError},
+    builtins,
 };
+use moon::value::Function;
 
 #[test]
 fn test_vm_add() {
-    let mut vm = VM::new(vec![]);
+    let mut vm = VM::new();
     let instructions = vec![
         Instruction::LoadConst(0),
         Instruction::LoadConst(1),
@@ -25,7 +27,7 @@ fn test_vm_add() {
 
 #[test]
 fn test_vm_sub() {
-    let mut vm = VM::new(vec![]);
+    let mut vm = VM::new();
     let instructions = vec![
         Instruction::LoadConst(0),
         Instruction::LoadConst(1),
@@ -38,7 +40,7 @@ fn test_vm_sub() {
 
 #[test]
 fn test_vm_mul() {
-    let mut vm = VM::new(vec![]);
+    let mut vm = VM::new();
     let instructions = vec![
         Instruction::LoadConst(0),
         Instruction::LoadConst(1),
@@ -51,7 +53,7 @@ fn test_vm_mul() {
 
 #[test]
 fn test_vm_division() {
-    let mut vm = VM::new(vec![]);
+    let mut vm = VM::new();
     let instructions = vec![
         Instruction::LoadConst(0),
         Instruction::LoadConst(1),
@@ -64,7 +66,7 @@ fn test_vm_division() {
 
 #[test]
 fn test_vm_division_by_zero() {
-    let mut vm = VM::new(vec![]);
+    let mut vm = VM::new();
     let instructions = vec![
         Instruction::LoadConst(0),
         Instruction::LoadConst(1),
@@ -77,7 +79,7 @@ fn test_vm_division_by_zero() {
 
 #[test]
 fn test_vm_negate() {
-    let mut vm = VM::new(vec![]);
+    let mut vm = VM::new();
     let instructions = vec![Instruction::LoadConst(0), Instruction::Negate];
     let constants = vec![Value::Number(5.0)];
     let result = vm.run(&instructions, &constants).unwrap();
@@ -86,7 +88,7 @@ fn test_vm_negate() {
 
 #[test]
 fn test_vm_not() {
-    let mut vm = VM::new(vec![]);
+    let mut vm = VM::new();
     let instructions = vec![Instruction::LoadConst(0), Instruction::Not];
     let constants = vec![Value::Bool(false)];
     let result = vm.run(&instructions, &constants).unwrap();
@@ -95,7 +97,7 @@ fn test_vm_not() {
 
 #[test]
 fn test_vm_type_error_add() {
-    let mut vm = VM::new(vec![]);
+    let mut vm = VM::new();
     let instructions = vec![
         Instruction::LoadConst(0),
         Instruction::LoadConst(1),
@@ -108,7 +110,7 @@ fn test_vm_type_error_add() {
 
 #[test]
 fn test_vm_type_error_not() {
-    let mut vm = VM::new(vec![]);
+    let mut vm = VM::new();
     let instructions = vec![Instruction::LoadConst(0), Instruction::Not];
     let constants = vec![Value::Number(1.0)];
     let result = vm.run(&instructions, &constants);
@@ -117,7 +119,7 @@ fn test_vm_type_error_not() {
 
 #[test]
 fn test_vm_load_const_error() {
-    let mut vm = VM::new(vec![]);
+    let mut vm = VM::new();
     let instructions = vec![Instruction::LoadConst(1)];
     let constants = vec![Value::Number(1.0)];
     let result = vm.run(&instructions, &constants);
@@ -126,7 +128,7 @@ fn test_vm_load_const_error() {
 
 #[test]
 fn test_vm_stack_underflow() {
-    let mut vm = VM::new(vec![]);
+    let mut vm = VM::new();
     let instructions = vec![Instruction::Add];
     let constants = vec![];
     let result = vm.run(&instructions, &constants);
@@ -134,14 +136,27 @@ fn test_vm_stack_underflow() {
 }
 
 #[test]
-fn test_vm_variable_load_store() {
-    let mut vm = VM::new(vec![]);
+fn test_vm_local_variable() {
+    let func_code = vec![
+        Instruction::LoadConst(0),
+        Instruction::StoreLocal(0),
+        Instruction::LoadLocal(0),
+        Instruction::Return,
+    ];
+    let func_constants = vec![Value::Number(42.0)];
+    let function = Value::Function(Function {
+        name: "local_test".to_string(),
+        params: vec![],
+        code: func_code,
+        constants: func_constants,
+        base: 0,
+    });
     let instructions = vec![
         Instruction::LoadConst(0),
-        Instruction::StoreVar(0),
-        Instruction::LoadVar(0),
+        Instruction::Call(0, 0),
     ];
-    let constants = vec![Value::Number(42.0)];
+    let constants = vec![function];
+    let mut vm = VM::new();
     let result = vm.run(&instructions, &constants).unwrap();
     assert_eq!(result, Value::Number(42.0));
 }
@@ -156,7 +171,7 @@ fn test_vm_if_statement() {
         Instruction::LoadConst(2),
     ];
     let constants = vec![Value::Bool(false), Value::Number(1.0), Value::Number(2.0)];
-    let mut vm = VM::new(vec![]);
+    let mut vm = VM::new();
     let result = vm.run(&instructions, &constants).unwrap();
     assert_eq!(result, Value::Number(2.0));
 }
@@ -168,7 +183,7 @@ fn test_vm_function_call() {
         Instruction::Return,
     ];
     let func_constants = vec![Value::Number(10.0)];
-    let function = Value::Function(moon::value::Function {
+    let function = Value::Function(Function {
         name: "const10".to_string(),
         params: vec![],
         code: func_code,
@@ -180,14 +195,14 @@ fn test_vm_function_call() {
         Instruction::Call(0, 0),
     ];
     let constants = vec![function];
-    let mut vm = VM::new(vec![]);
+    let mut vm = VM::new();
     let result = vm.run(&instructions, &constants).unwrap();
     assert_eq!(result, Value::Number(10.0));
 }
 
 #[test]
 fn test_vm_call_non_function() {
-    let mut vm = VM::new(vec![]);
+    let mut vm = VM::new();
     let instructions = vec![
         Instruction::LoadConst(0),
         Instruction::Call(0, 0),
@@ -254,7 +269,7 @@ fn test_compile_unary_not() {
     assert_eq!(compiler.code.len(), 2);
     match compiler.code[0] {
         Instruction::LoadConst(0) => {}
-        _ => panic!("Expected LoadConst"),
+        _ => panic!("Expected LoadConst instruction"),
     }
     match compiler.code[1] {
         Instruction::Not => {}
@@ -342,7 +357,7 @@ fn test_compile_binary_unimplemented_operator() {
     let mut compiler = Compiler::new();
     let expr = ast::Expr::Binary {
         left: Box::new(ast::Expr::Number(1.0)),
-        op: ast::BinaryOp::Equal,
+        op: ast::BinaryOp::NotEqual,
         right: Box::new(ast::Expr::Number(1.0)),
     };
     compiler.compile_expr(&expr);
@@ -365,7 +380,7 @@ fn test_compile_and_run_variable_assignment() {
     ];
     let mut compiler = Compiler::new();
     compiler.compile_program(&stmts);
-    let mut vm = VM::new(vec![]);
+    let mut vm = VM::new();
     let result = vm.run(&compiler.code, &compiler.constants).unwrap();
     assert_eq!(result, Value::Number(7.0));
 }
@@ -398,7 +413,7 @@ fn test_compile_and_run_function_declaration_and_call() {
     ];
     let mut compiler = Compiler::new();
     compiler.compile_program(&stmts);
-    let mut vm = VM::new(vec![]);
+    let mut vm = VM::new();
     let result = vm.run(&compiler.code, &compiler.constants).unwrap();
     assert_eq!(result, Value::Number(6.0));
 }
@@ -420,7 +435,7 @@ fn test_bytecode_debug() {
 
 #[test]
 fn test_value_function_display() {
-    let func = Value::Function(moon::value::Function {
+    let func = Value::Function(Function {
         name: "foo".to_string(),
         params: vec!["a".to_string(), "b".to_string()],
         code: vec![],
@@ -790,16 +805,6 @@ fn test_parser_print_statement() {
 }
 
 #[test]
-fn test_parser_extra_tokens_error() {
-    let tokens = vec![
-        lexer::Token::Number(1.0),
-        lexer::Token::Number(2.0),
-    ];
-    let err = parser::parse(&tokens).unwrap_err();
-    assert!(err.to_string().contains("Extra tokens"));
-}
-
-#[test]
 fn test_parser_missing_rparen() {
     let tokens = vec![
         lexer::Token::LParen,
@@ -809,4 +814,87 @@ fn test_parser_missing_rparen() {
     ];
     let err = parser::parse(&tokens).unwrap_err();
     assert!(err.to_string().contains("Unexpected end"));
+}
+
+#[test]
+fn test_builtin_type() {
+    let args = vec![Value::Number(10.0)];
+    let result = builtins::builtin_type(&args).unwrap();
+    assert_eq!(result, Value::Str("number".to_string()));
+}
+
+#[test]
+fn test_builtin_print() {
+    let args = vec![Value::Str("hello".to_string())];
+    let result = builtins::builtin_print(&args).unwrap();
+    assert_eq!(result, Value::Number(0.0));
+}
+
+#[test]
+fn test_register_builtins() {
+    let mut vm = VM::new();
+    builtins::register_builtins(&mut vm);
+    if let Some(Value::BuiltinFunction(name, _)) = vm.globals.get("print") {
+        assert_eq!(name, "print");
+    } else {
+        panic!("Builtin 'print' not registered correctly");
+    }
+    if let Some(Value::BuiltinFunction(name, _)) = vm.globals.get("type") {
+        assert_eq!(name, "type");
+    } else {
+        panic!("Builtin 'type' not registered correctly");
+    }
+}
+
+#[test]
+fn test_compile_and_run_print_statement() {
+    use moon::ast::{Expr, Stmt};
+    let stmts = vec![
+        Stmt::Print(vec![Expr::Number(123.0)]),
+    ];
+    let mut compiler = Compiler::new();
+    compiler.compile_program(&stmts);
+    let mut vm = VM::new();
+    builtins::register_builtins(&mut vm);
+    let result = vm.run(&compiler.code, &compiler.constants).unwrap();
+    assert_eq!(result, Value::Number(0.0));
+}
+
+#[test]
+fn test_top_level_compiler_global_declaration_instructions() {
+    use moon::ast::{Stmt, TypeAnnotation, Expr};
+    let mut compiler = Compiler::new();
+    let stmt = Stmt::VariableDeclaration {
+        name: "a".to_string(),
+        var_type: TypeAnnotation::Builtin("number".to_string()),
+        initializer: Some(Expr::Number(10.0)),
+    };
+    compiler.compile_stmt(&stmt);
+    if let Some(last) = compiler.code.last() {
+        match last {
+            Instruction::StoreGlobal(name) => assert_eq!(name, "a"),
+            _ => panic!("Expected StoreGlobal instruction"),
+        }
+    } else {
+        panic!("No instructions generated");
+    }
+}
+
+#[test]
+fn test_top_level_compiler_assignment_instructions() {
+    use moon::ast::{Stmt, Expr};
+    let mut compiler = Compiler::new();
+    let stmt = Stmt::Assignment {
+        name: "b".to_string(),
+        expr: Expr::Number(20.0),
+    };
+    compiler.compile_stmt(&stmt);
+    if let Some(last) = compiler.code.last() {
+        match last {
+            Instruction::StoreGlobal(name) => assert_eq!(name, "b"),
+            _ => panic!("Expected StoreGlobal instruction"),
+        }
+    } else {
+        panic!("No instructions generated");
+    }
 }

@@ -2,29 +2,35 @@
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Instruction {
-    // push a constant onto the stack
+    // Push a constant onto the stack
     LoadConst(usize),
-    // arithmetic operations
+
+    // Arithmetic and unary ops
     Add,
     Sub,
     Mul,
     Div,
     Negate,
     Not,
-    // equality operator
     Equal,
-    // variable access: the operand is the slot index for the variable
-    LoadVar(usize),
-    StoreVar(usize),
-    // unconditional jump to instruction index
+
+    // Local variable access by numeric slot
+    LoadLocal(usize),
+    StoreLocal(usize),
+
+    // Global variable access by name
+    LoadGlobal(String),
+    StoreGlobal(String),
+
+    // Control flow
     Jump(usize),
-    // jump if top of stack is false (pop the boolean)
     JumpIfFalse(usize),
-    // call a function – the constant table holds the Function object.
-    // The operands are (function constant index, number of arguments)
+
+    // Function call & return
+    // (Function object is typically in the constants array, or could be on stack)
     Call(usize, usize),
-    // return from function; optionally returns a value on the stack.
     Return,
-    // discard top-of-stack value
+
+    // Discard top-of-stack
     Pop,
 }

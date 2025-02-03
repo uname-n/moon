@@ -1,4 +1,6 @@
-use crate::vm::VMError;
+// src/builtins.rs
+
+use crate::vm::{VM, VMError};
 use crate::value::Value;
 
 pub fn builtin_print(args: &[Value]) -> Result<Value, VMError> {
@@ -19,7 +21,16 @@ pub fn builtin_type(args: &[Value]) -> Result<Value, VMError> {
         Value::Function(_) => "function",
         Value::BuiltinFunction(_, _) => "builtin",
         Value::Str(_) => "string",
-    }
-    .to_string();
-    Ok(Value::Str(s))
+    };
+    Ok(Value::Str(s.to_string()))
+}
+
+/// Register all builtins into the VM's global map.
+pub fn register_builtins(vm: &mut VM) {
+    vm.define_global("print",
+        Value::BuiltinFunction("print".to_string(), builtin_print));
+    vm.define_global("type",
+        Value::BuiltinFunction("type".to_string(), builtin_type));
+
+    // Add more builtins if desired...
 }
