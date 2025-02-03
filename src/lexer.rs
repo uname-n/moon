@@ -1,13 +1,10 @@
-// src/lexer.rs
-
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token {
-    // Literals
     Number(f64),
     True,
     False,
     Identifier(String),
-    // Operators and punctuation
+
     Plus,
     Minus,
     Star,
@@ -17,8 +14,8 @@ pub enum Token {
     LBrace,
     RBrace,
     Bang,
-    Eq,     // assignment: =
-    EqEq,   // equality: ==
+    Eq,
+    EqEq,
     NotEq,
     Less,
     LessEq,
@@ -26,9 +23,9 @@ pub enum Token {
     GreaterEq,
     And,
     Or,
-    Colon,  // for type annotations
+    Colon,
     Comma,
-    // Keywords
+
     Fn,
     If,
     Else,
