@@ -1,6 +1,6 @@
 use crate::ast::*;
 use crate::bytecode::Instruction;
-use crate::value::{Value, Function};
+use crate::value::{Function, Value};
 
 pub struct Compiler {
     pub code: Vec<Instruction>,
@@ -39,19 +39,20 @@ impl Compiler {
             Stmt::Expression(expr) => {
                 self.compile_expr(expr);
             }
-            Stmt::VariableDeclaration { name, initializer, var_type: _, } => {
+            Stmt::VariableDeclaration {
+                name,
+                initializer,
+                var_type: _,
+            } => {
                 if let Some(expr) = initializer {
                     self.compile_expr(expr);
                 } else {
-                    // default initializer: 0.0
                     let idx = self.add_constant(Value::Number(0.0));
                     self.code.push(Instruction::LoadConst(idx));
                 }
                 if self.is_top_level {
-                    // Store in global
                     self.code.push(Instruction::StoreGlobal(name.clone()));
                 } else {
-                    // Make a new local slot
                     let local_idx = self.variables.len();
                     self.variables.push(name.clone());
                     self.code.push(Instruction::StoreLocal(local_idx));
@@ -60,14 +61,16 @@ impl Compiler {
             Stmt::Assignment { name, expr } => {
                 self.compile_expr(expr);
                 if let Some(local_idx) = self.find_local(name) {
-                    // It's a local variable
                     self.code.push(Instruction::StoreLocal(local_idx));
                 } else {
-                    // If not local, store in global (removed the closure fallback)
                     self.code.push(Instruction::StoreGlobal(name.clone()));
                 }
             }
-            Stmt::If { condition, then_branch, else_branch } => {
+            Stmt::If {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
                 self.compile_expr(condition);
                 let jump_if_false_idx = self.code.len();
                 self.code.push(Instruction::JumpIfFalse(0));
@@ -98,17 +101,21 @@ impl Compiler {
                 let loop_end = self.code.len();
                 self.code[jump_idx] = Instruction::JumpIfFalse(loop_end);
             }
-            Stmt::FunctionDeclaration { name, params, return_type: _, body } => {
+            Stmt::FunctionDeclaration {
+                name,
+                params,
+                return_type: _,
+                body,
+            } => {
                 let mut func_compiler = Compiler::new();
                 func_compiler.is_top_level = false;
-                // Add parameter names as local variables
+
                 func_compiler.variables = params.iter().map(|(p, _)| p.clone()).collect();
 
                 for stmt in body {
                     func_compiler.compile_stmt(stmt);
                 }
 
-                // Ensure function has a final 'return 0' if none specified
                 let zero_idx = func_compiler.add_constant(Value::Number(0.0));
                 func_compiler.code.push(Instruction::LoadConst(zero_idx));
                 func_compiler.code.push(Instruction::Return);
@@ -119,7 +126,7 @@ impl Compiler {
                     code: func_compiler.code,
                     constants: func_compiler.constants,
                     base: 0,
-                    // No real closure capturing logic is implemented:
+
                     closure: if self.is_top_level {
                         None
                     } else {
@@ -127,7 +134,7 @@ impl Compiler {
                     },
                 });
                 let const_idx = self.add_constant(function_val);
-                // At top-level, store the function in a global
+
                 self.code.push(Instruction::LoadConst(const_idx));
                 self.code.push(Instruction::StoreGlobal(name.clone()));
             }
@@ -141,14 +148,12 @@ impl Compiler {
                 self.code.push(Instruction::Return);
             }
             Stmt::Print(args) => {
-                // Generate code to push each argument in *reverse* order
-                // so the final stack has arg1, arg2, ...
-                for arg in args.iter().rev() {
+                for arg in args.iter() {
                     self.compile_expr(arg);
                 }
-                // Then load the builtin 'print' function
+
                 self.code.push(Instruction::LoadGlobal("print".to_string()));
-                // And call it
+
                 self.code.push(Instruction::Call(0, args.len()));
             }
         }
@@ -169,7 +174,6 @@ impl Compiler {
                 self.code.push(Instruction::LoadConst(idx));
             }
             Expr::Identifier(name) => {
-                // Attempt local; else global (removed the closure fallback).
                 if let Some(local_idx) = self.find_local(name) {
                     self.code.push(Instruction::LoadLocal(local_idx));
                 } else {
@@ -183,96 +187,93 @@ impl Compiler {
                     UnaryOp::Not => self.code.push(Instruction::Not),
                 }
             }
-            Expr::Binary { left, op, right } => {
-                match op {
-                    BinaryOp::And => {
-                        self.compile_expr(left);
-                        let jump_if_false_idx = self.code.len();
-                        self.code.push(Instruction::JumpIfFalse(0));
-                        self.compile_expr(right);
-                        let jump_to_end_idx = self.code.len();
-                        self.code.push(Instruction::Jump(0));
-                        let false_label = self.code.len();
-                        let false_const = self.add_constant(Value::Bool(false));
-                        self.code.push(Instruction::LoadConst(false_const));
-                        let end_label = self.code.len();
-                        self.code[jump_if_false_idx] = Instruction::JumpIfFalse(false_label);
-                        self.code[jump_to_end_idx] = Instruction::Jump(end_label);
-                    }
-                    BinaryOp::Or => {
-                        self.compile_expr(left);
-                        let jump_if_true_idx = self.code.len();
-                        self.code.push(Instruction::JumpIfTrue(0));
-                        self.compile_expr(right);
-                        let jump_to_end_idx = self.code.len();
-                        self.code.push(Instruction::Jump(0));
-                        let true_label = self.code.len();
-                        let true_const = self.add_constant(Value::Bool(true));
-                        self.code.push(Instruction::LoadConst(true_const));
-                        let end_label = self.code.len();
-                        self.code[jump_if_true_idx] = Instruction::JumpIfTrue(true_label);
-                        self.code[jump_to_end_idx] = Instruction::Jump(end_label);
-                    }
-                    BinaryOp::Add => {
-                        self.compile_expr(left);
-                        self.compile_expr(right);
-                        self.code.push(Instruction::Add);
-                    }
-                    BinaryOp::Subtract => {
-                        self.compile_expr(left);
-                        self.compile_expr(right);
-                        self.code.push(Instruction::Sub);
-                    }
-                    BinaryOp::Multiply => {
-                        self.compile_expr(left);
-                        self.compile_expr(right);
-                        self.code.push(Instruction::Mul);
-                    }
-                    BinaryOp::Divide => {
-                        self.compile_expr(left);
-                        self.compile_expr(right);
-                        self.code.push(Instruction::Div);
-                    }
-                    BinaryOp::Equal => {
-                        self.compile_expr(left);
-                        self.compile_expr(right);
-                        self.code.push(Instruction::Equal);
-                    }
-                    BinaryOp::NotEqual => {
-                        self.compile_expr(left);
-                        self.compile_expr(right);
-                        self.code.push(Instruction::NotEqual);
-                    }
-                    BinaryOp::Less => {
-                        self.compile_expr(left);
-                        self.compile_expr(right);
-                        self.code.push(Instruction::Less);
-                    }
-                    BinaryOp::Greater => {
-                        self.compile_expr(left);
-                        self.compile_expr(right);
-                        self.code.push(Instruction::Greater);
-                    }
-                    BinaryOp::LessEqual => {
-                        self.compile_expr(left);
-                        self.compile_expr(right);
-                        self.code.push(Instruction::LessEqual);
-                    }
-                    BinaryOp::GreaterEqual => {
-                        self.compile_expr(left);
-                        self.compile_expr(right);
-                        self.code.push(Instruction::GreaterEqual);
-                    }
+            Expr::Binary { left, op, right } => match op {
+                BinaryOp::And => {
+                    self.compile_expr(left);
+                    let jump_if_false_idx = self.code.len();
+                    self.code.push(Instruction::JumpIfFalse(0));
+                    self.compile_expr(right);
+                    let jump_to_end_idx = self.code.len();
+                    self.code.push(Instruction::Jump(0));
+                    let false_label = self.code.len();
+                    let false_const = self.add_constant(Value::Bool(false));
+                    self.code.push(Instruction::LoadConst(false_const));
+                    let end_label = self.code.len();
+                    self.code[jump_if_false_idx] = Instruction::JumpIfFalse(false_label);
+                    self.code[jump_to_end_idx] = Instruction::Jump(end_label);
                 }
-            }
+                BinaryOp::Or => {
+                    self.compile_expr(left);
+                    let jump_if_true_idx = self.code.len();
+                    self.code.push(Instruction::JumpIfTrue(0));
+                    self.compile_expr(right);
+                    let jump_to_end_idx = self.code.len();
+                    self.code.push(Instruction::Jump(0));
+                    let true_label = self.code.len();
+                    let true_const = self.add_constant(Value::Bool(true));
+                    self.code.push(Instruction::LoadConst(true_const));
+                    let end_label = self.code.len();
+                    self.code[jump_if_true_idx] = Instruction::JumpIfTrue(true_label);
+                    self.code[jump_to_end_idx] = Instruction::Jump(end_label);
+                }
+                BinaryOp::Add => {
+                    self.compile_expr(left);
+                    self.compile_expr(right);
+                    self.code.push(Instruction::Add);
+                }
+                BinaryOp::Subtract => {
+                    self.compile_expr(left);
+                    self.compile_expr(right);
+                    self.code.push(Instruction::Sub);
+                }
+                BinaryOp::Multiply => {
+                    self.compile_expr(left);
+                    self.compile_expr(right);
+                    self.code.push(Instruction::Mul);
+                }
+                BinaryOp::Divide => {
+                    self.compile_expr(left);
+                    self.compile_expr(right);
+                    self.code.push(Instruction::Div);
+                }
+                BinaryOp::Equal => {
+                    self.compile_expr(left);
+                    self.compile_expr(right);
+                    self.code.push(Instruction::Equal);
+                }
+                BinaryOp::NotEqual => {
+                    self.compile_expr(left);
+                    self.compile_expr(right);
+                    self.code.push(Instruction::NotEqual);
+                }
+                BinaryOp::Less => {
+                    self.compile_expr(left);
+                    self.compile_expr(right);
+                    self.code.push(Instruction::Less);
+                }
+                BinaryOp::Greater => {
+                    self.compile_expr(left);
+                    self.compile_expr(right);
+                    self.code.push(Instruction::Greater);
+                }
+                BinaryOp::LessEqual => {
+                    self.compile_expr(left);
+                    self.compile_expr(right);
+                    self.code.push(Instruction::LessEqual);
+                }
+                BinaryOp::GreaterEqual => {
+                    self.compile_expr(left);
+                    self.compile_expr(right);
+                    self.code.push(Instruction::GreaterEqual);
+                }
+            },
             Expr::Call { callee, arguments } => {
-                // Push arguments in reverse
-                for arg in arguments.iter().rev() {
+                for arg in arguments.iter() {
                     self.compile_expr(arg);
                 }
-                // Evaluate the callee last
+
                 self.compile_expr(callee);
-                // Then call
+
                 self.code.push(Instruction::Call(0, arguments.len()));
             }
         }

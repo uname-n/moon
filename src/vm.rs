@@ -4,14 +4,13 @@ use std::fmt;
 use crate::bytecode::Instruction;
 use crate::value::Value;
 
-/// Possible runtime errors from the VM.
 #[derive(Debug, PartialEq)]
 pub enum VMError {
     TypeError(String),
     DivisionByZero,
     StackUnderflow,
     UndefinedVariable(String),
-    ReturnValue(Value), // used for "unwinding" from top-level
+    ReturnValue(Value),
 }
 
 impl fmt::Display for VMError {
@@ -28,31 +27,24 @@ impl fmt::Display for VMError {
 
 impl std::error::Error for VMError {}
 
-/// A call frame holds local variables and the function’s own bytecode/constants,
-/// and a closure environment for captured variables.
 struct CallFrame {
     pub code: Vec<Instruction>,
     pub ip: usize,
     pub constants: Vec<Value>,
     pub locals: Vec<Value>,
-    pub _base: usize, // was `base`, but unused
+    pub _base: usize,
     pub closure: HashMap<String, Value>,
 }
 
-/// The VM carries a stack, a call stack (frames), and a global map of name → Value.
 pub struct VM {
-    /// Global variables/builtins are stored by name
     pub globals: HashMap<String, Value>,
 
-    /// A stack of active call frames
     call_stack: Vec<CallFrame>,
 
-    /// The operand stack for intermediate values
     stack: Vec<Value>,
 }
 
 impl VM {
-    /// Create a fresh VM (empty stack, call_stack, and globals).
     pub fn new() -> Self {
         Self {
             globals: HashMap::new(),
@@ -61,20 +53,20 @@ impl VM {
         }
     }
 
-    /// Insert or update a global value by name (for builtins or top-level variables).
     pub fn define_global(&mut self, name: &str, value: Value) {
         self.globals.insert(name.to_string(), value);
     }
 
-    /// Helper to pop a number from the stack or produce a TypeError.
     fn pop_number(&mut self) -> Result<f64, VMError> {
         match self.stack.pop().ok_or(VMError::StackUnderflow)? {
             Value::Number(n) => Ok(n),
-            other => Err(VMError::TypeError(format!("Expected number, got {}", other))),
+            other => Err(VMError::TypeError(format!(
+                "Expected number, got {}",
+                other
+            ))),
         }
     }
 
-    /// Helper to pop a bool from the stack or produce a TypeError.
     fn pop_bool(&mut self) -> Result<bool, VMError> {
         match self.stack.pop().ok_or(VMError::StackUnderflow)? {
             Value::Bool(b) => Ok(b),
@@ -82,12 +74,6 @@ impl VM {
         }
     }
 
-    // ─────────────────────────────────────────────────────────────────────────────
-    // TOP-LEVEL CODE EXECUTION
-    // ─────────────────────────────────────────────────────────────────────────────
-
-    /// Execute code (with its constants) in "top-level" mode (no function frame).
-    /// Returns the top of the stack if successful, or an error.
     pub fn run(&mut self, code: &[Instruction], constants: &[Value]) -> Result<Value, VMError> {
         let mut ip = 0;
         while ip < code.len() {
@@ -95,7 +81,8 @@ impl VM {
             ip += 1;
             match instr {
                 Instruction::LoadConst(idx) => {
-                    let val = constants.get(idx)
+                    let val = constants
+                        .get(idx)
                         .ok_or_else(|| VMError::TypeError(format!("No constant at index {}", idx)))?
                         .clone();
                     self.stack.push(val);
@@ -168,7 +155,9 @@ impl VM {
                     return Err(VMError::TypeError("StoreLocal in top-level".to_string()));
                 }
                 Instruction::LoadGlobal(name) => {
-                    let val = self.globals.get(&name)
+                    let val = self
+                        .globals
+                        .get(&name)
                         .ok_or_else(|| VMError::UndefinedVariable(name.clone()))?;
                     self.stack.push(val.clone());
                 }
@@ -178,7 +167,9 @@ impl VM {
                 }
                 Instruction::LoadClosure(name) => {
                     if let Some(frame) = self.call_stack.last() {
-                        let val = frame.closure.get(&name)
+                        let val = frame
+                            .closure
+                            .get(&name)
                             .ok_or_else(|| VMError::UndefinedVariable(name.clone()))?;
                         self.stack.push(val.clone());
                     } else {
@@ -246,7 +237,10 @@ impl VM {
                             self.stack.push(ret);
                         }
                         other => {
-                            return Err(VMError::TypeError(format!("Call of non-function: {}", other)));
+                            return Err(VMError::TypeError(format!(
+                                "Call of non-function: {}",
+                                other
+                            )));
                         }
                     }
                 }
@@ -262,12 +256,6 @@ impl VM {
         self.stack.pop().ok_or(VMError::StackUnderflow)
     }
 
-    // ─────────────────────────────────────────────────────────────────────────────
-    // FUNCTION CALL EXECUTION
-    // ─────────────────────────────────────────────────────────────────────────────
-
-    /// Execute instructions in the topmost CallFrame (last in call_stack),
-    /// returning the final result of the function.
     fn run_frame(&mut self) -> Result<Value, VMError> {
         loop {
             let instr = {
@@ -282,7 +270,9 @@ impl VM {
             match instr {
                 Instruction::LoadConst(idx) => {
                     let frame = self.call_stack.last().ok_or(VMError::StackUnderflow)?;
-                    let val = frame.constants.get(idx)
+                    let val = frame
+                        .constants
+                        .get(idx)
                         .ok_or_else(|| VMError::TypeError(format!("No constant at index {}", idx)))?
                         .clone();
                     self.stack.push(val);
@@ -350,7 +340,9 @@ impl VM {
                 }
                 Instruction::LoadLocal(idx) => {
                     let frame = self.call_stack.last().ok_or(VMError::StackUnderflow)?;
-                    let val = frame.locals.get(idx)
+                    let val = frame
+                        .locals
+                        .get(idx)
                         .ok_or_else(|| VMError::UndefinedVariable(format!("local#{}", idx)))?
                         .clone();
                     self.stack.push(val);
@@ -361,7 +353,6 @@ impl VM {
                     if idx < frame.locals.len() {
                         frame.locals[idx] = val;
                     } else {
-                        // Expand if needed
                         while frame.locals.len() < idx {
                             frame.locals.push(Value::Number(0.0));
                         }
@@ -369,7 +360,9 @@ impl VM {
                     }
                 }
                 Instruction::LoadGlobal(name) => {
-                    let val = self.globals.get(&name)
+                    let val = self
+                        .globals
+                        .get(&name)
                         .ok_or_else(|| VMError::UndefinedVariable(name.clone()))?;
                     self.stack.push(val.clone());
                 }
@@ -379,7 +372,9 @@ impl VM {
                 }
                 Instruction::LoadClosure(name) => {
                     if let Some(frame) = self.call_stack.last() {
-                        let val = frame.closure.get(&name)
+                        let val = frame
+                            .closure
+                            .get(&name)
                             .ok_or_else(|| VMError::UndefinedVariable(name.clone()))?;
                         self.stack.push(val.clone());
                     } else {

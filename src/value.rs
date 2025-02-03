@@ -28,6 +28,6 @@ pub struct Function {
     pub params: Vec<String>,
     pub code: Vec<Instruction>,
     pub constants: Vec<Value>,
-    pub base: usize, // rename to `_base` if desired
+    pub base: usize,
     pub closure: Option<HashMap<String, Value>>,
 }

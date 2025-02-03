@@ -1,4 +1,4 @@
-use crate::ast::{Expr, UnaryOp, BinaryOp, Stmt, TypeAnnotation};
+use crate::ast::{BinaryOp, Expr, Stmt, TypeAnnotation, UnaryOp};
 use crate::lexer::Token;
 
 #[derive(Debug)]
@@ -21,15 +21,15 @@ impl<'a> Parser<'a> {
     pub fn new(tokens: &'a [Token]) -> Self {
         Parser { tokens, pos: 0 }
     }
-    
+
     fn current(&self) -> Option<&Token> {
         self.tokens.get(self.pos)
     }
-    
+
     fn advance(&mut self) {
         self.pos += 1;
     }
-    
+
     fn expect(&mut self, expected: &Token) -> Result<(), ParserError>
     where
         Token: PartialEq,
@@ -39,13 +39,16 @@ impl<'a> Parser<'a> {
                 self.advance();
                 Ok(())
             } else {
-                Err(ParserError(format!("Expected {:?}, got {:?}", expected, token)))
+                Err(ParserError(format!(
+                    "Expected {:?}, got {:?}",
+                    expected, token
+                )))
             }
         } else {
             Err(ParserError("Unexpected end of tokens".into()))
         }
     }
-    
+
     pub fn parse_program(&mut self) -> Result<Vec<Stmt>, ParserError> {
         let mut stmts = Vec::new();
         while self.pos < self.tokens.len() {
@@ -54,7 +57,7 @@ impl<'a> Parser<'a> {
         }
         Ok(stmts)
     }
-    
+
     fn parse_statement(&mut self) -> Result<Stmt, ParserError> {
         match self.current() {
             Some(Token::Fn) => self.parse_function_declaration(),
@@ -78,14 +81,16 @@ impl<'a> Parser<'a> {
             _ => self.parse_expression_statement(),
         }
     }
-    
+
     fn parse_variable_declaration(&mut self) -> Result<Stmt, ParserError> {
         let name = if let Some(Token::Identifier(n)) = self.current() {
             let s = n.clone();
             self.advance();
             s
         } else {
-            return Err(ParserError("Expected identifier in variable declaration".into()));
+            return Err(ParserError(
+                "Expected identifier in variable declaration".into(),
+            ));
         };
         self.expect(&Token::Colon)?;
         let type_str = if let Some(Token::Identifier(t)) = self.current() {
@@ -102,9 +107,13 @@ impl<'a> Parser<'a> {
         } else {
             None
         };
-        Ok(Stmt::VariableDeclaration { name, var_type, initializer })
+        Ok(Stmt::VariableDeclaration {
+            name,
+            var_type,
+            initializer,
+        })
     }
-    
+
     fn parse_assignment(&mut self) -> Result<Stmt, ParserError> {
         let name = if let Some(Token::Identifier(n)) = self.current() {
             let s = n.clone();
@@ -117,7 +126,7 @@ impl<'a> Parser<'a> {
         let expr = self.parse_expression()?;
         Ok(Stmt::Assignment { name, expr })
     }
-    
+
     fn parse_if_statement(&mut self) -> Result<Stmt, ParserError> {
         self.expect(&Token::If)?;
         let condition = self.parse_expression()?;
@@ -128,9 +137,13 @@ impl<'a> Parser<'a> {
         } else {
             None
         };
-        Ok(Stmt::If { condition, then_branch, else_branch })
+        Ok(Stmt::If {
+            condition,
+            then_branch,
+            else_branch,
+        })
     }
-    
+
     fn parse_while_statement(&mut self) -> Result<Stmt, ParserError> {
         self.expect(&Token::While)?;
         self.expect(&Token::LParen)?;
@@ -139,7 +152,7 @@ impl<'a> Parser<'a> {
         let body = self.parse_block()?;
         Ok(Stmt::While { condition, body })
     }
-    
+
     fn parse_function_declaration(&mut self) -> Result<Stmt, ParserError> {
         self.expect(&Token::Fn)?;
         let name = if let Some(Token::Identifier(n)) = self.current() {
@@ -178,15 +191,20 @@ impl<'a> Parser<'a> {
         }
         self.expect(&Token::RParen)?;
         let body = self.parse_block()?;
-        Ok(Stmt::FunctionDeclaration { name, params, return_type: None, body })
+        Ok(Stmt::FunctionDeclaration {
+            name,
+            params,
+            return_type: None,
+            body,
+        })
     }
-    
+
     fn parse_return_statement(&mut self) -> Result<Stmt, ParserError> {
         self.expect(&Token::Return)?;
         let expr = Some(self.parse_expression()?);
         Ok(Stmt::Return(expr))
     }
-    
+
     fn parse_print_statement(&mut self) -> Result<Stmt, ParserError> {
         self.expect(&Token::Print)?;
         self.expect(&Token::LParen)?;
@@ -205,12 +223,12 @@ impl<'a> Parser<'a> {
         self.expect(&Token::RParen)?;
         Ok(Stmt::Print(args))
     }
-    
+
     fn parse_expression_statement(&mut self) -> Result<Stmt, ParserError> {
         let expr = self.parse_expression()?;
         Ok(Stmt::Expression(expr))
     }
-    
+
     fn parse_block(&mut self) -> Result<Vec<Stmt>, ParserError> {
         self.expect(&Token::LBrace)?;
         let mut stmts = Vec::new();
@@ -223,31 +241,39 @@ impl<'a> Parser<'a> {
         self.expect(&Token::RBrace)?;
         Ok(stmts)
     }
-    
+
     pub fn parse_expression(&mut self) -> Result<Expr, ParserError> {
         self.parse_or()
     }
-    
+
     fn parse_or(&mut self) -> Result<Expr, ParserError> {
         let mut expr = self.parse_and()?;
         while let Some(Token::Or) = self.current() {
             self.advance();
             let right = self.parse_and()?;
-            expr = Expr::Binary { left: Box::new(expr), op: BinaryOp::Or, right: Box::new(right) };
+            expr = Expr::Binary {
+                left: Box::new(expr),
+                op: BinaryOp::Or,
+                right: Box::new(right),
+            };
         }
         Ok(expr)
     }
-    
+
     fn parse_and(&mut self) -> Result<Expr, ParserError> {
         let mut expr = self.parse_equality()?;
         while let Some(Token::And) = self.current() {
             self.advance();
             let right = self.parse_equality()?;
-            expr = Expr::Binary { left: Box::new(expr), op: BinaryOp::And, right: Box::new(right) };
+            expr = Expr::Binary {
+                left: Box::new(expr),
+                op: BinaryOp::And,
+                right: Box::new(right),
+            };
         }
         Ok(expr)
     }
-    
+
     fn parse_equality(&mut self) -> Result<Expr, ParserError> {
         let mut expr = self.parse_comparison()?;
         while let Some(tok) = self.current() {
@@ -258,11 +284,15 @@ impl<'a> Parser<'a> {
             };
             self.advance();
             let right = self.parse_comparison()?;
-            expr = Expr::Binary { left: Box::new(expr), op, right: Box::new(right) };
+            expr = Expr::Binary {
+                left: Box::new(expr),
+                op,
+                right: Box::new(right),
+            };
         }
         Ok(expr)
     }
-    
+
     fn parse_comparison(&mut self) -> Result<Expr, ParserError> {
         let mut expr = self.parse_term()?;
         while let Some(tok) = self.current() {
@@ -275,11 +305,15 @@ impl<'a> Parser<'a> {
             };
             self.advance();
             let right = self.parse_term()?;
-            expr = Expr::Binary { left: Box::new(expr), op, right: Box::new(right) };
+            expr = Expr::Binary {
+                left: Box::new(expr),
+                op,
+                right: Box::new(right),
+            };
         }
         Ok(expr)
     }
-    
+
     fn parse_term(&mut self) -> Result<Expr, ParserError> {
         let mut expr = self.parse_factor()?;
         while let Some(tok) = self.current() {
@@ -290,11 +324,15 @@ impl<'a> Parser<'a> {
             };
             self.advance();
             let right = self.parse_factor()?;
-            expr = Expr::Binary { left: Box::new(expr), op, right: Box::new(right) };
+            expr = Expr::Binary {
+                left: Box::new(expr),
+                op,
+                right: Box::new(right),
+            };
         }
         Ok(expr)
     }
-    
+
     fn parse_factor(&mut self) -> Result<Expr, ParserError> {
         let mut expr = self.parse_unary()?;
         while let Some(tok) = self.current() {
@@ -305,23 +343,33 @@ impl<'a> Parser<'a> {
             };
             self.advance();
             let right = self.parse_unary()?;
-            expr = Expr::Binary { left: Box::new(expr), op, right: Box::new(right) };
+            expr = Expr::Binary {
+                left: Box::new(expr),
+                op,
+                right: Box::new(right),
+            };
         }
         Ok(expr)
     }
-    
+
     fn parse_unary(&mut self) -> Result<Expr, ParserError> {
         if let Some(tok) = self.current().cloned() {
             match tok {
                 Token::Minus => {
                     self.advance();
                     let expr = self.parse_unary()?;
-                    Ok(Expr::Unary { op: UnaryOp::Negate, expr: Box::new(expr) })
+                    Ok(Expr::Unary {
+                        op: UnaryOp::Negate,
+                        expr: Box::new(expr),
+                    })
                 }
                 Token::Bang => {
                     self.advance();
                     let expr = self.parse_unary()?;
-                    Ok(Expr::Unary { op: UnaryOp::Not, expr: Box::new(expr) })
+                    Ok(Expr::Unary {
+                        op: UnaryOp::Not,
+                        expr: Box::new(expr),
+                    })
                 }
                 _ => self.parse_call(),
             }
@@ -329,7 +377,7 @@ impl<'a> Parser<'a> {
             Err(ParserError("Unexpected end in unary expression".into()))
         }
     }
-    
+
     fn parse_call(&mut self) -> Result<Expr, ParserError> {
         let mut expr = self.parse_primary()?;
         while let Some(Token::LParen) = self.current() {
@@ -347,11 +395,14 @@ impl<'a> Parser<'a> {
                 }
             }
             self.expect(&Token::RParen)?;
-            expr = Expr::Call { callee: Box::new(expr), arguments: args };
+            expr = Expr::Call {
+                callee: Box::new(expr),
+                arguments: args,
+            };
         }
         Ok(expr)
     }
-    
+
     fn parse_primary(&mut self) -> Result<Expr, ParserError> {
         if let Some(tok) = self.current().cloned() {
             match tok {
@@ -381,10 +432,15 @@ impl<'a> Parser<'a> {
                     self.expect(&Token::RParen)?;
                     Ok(expr)
                 }
-                _ => Err(ParserError(format!("Unexpected token in primary: {:?}", tok))),
+                _ => Err(ParserError(format!(
+                    "Unexpected token in primary: {:?}",
+                    tok
+                ))),
             }
         } else {
-            Err(ParserError("Unexpected end of tokens in primary expression".into()))
+            Err(ParserError(
+                "Unexpected end of tokens in primary expression".into(),
+            ))
         }
     }
 }

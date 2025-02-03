@@ -51,10 +51,8 @@ fn main() {
         Ok(_result) => {
             // println!("Program result: {}", result);
         }
-        Err(e) => {
-            match e {
-                _ => eprintln!("Runtime error: {}", e),
-            }
-        }
+        Err(e) => match e {
+            _ => eprintln!("Runtime error: {}", e),
+        },
     }
 }

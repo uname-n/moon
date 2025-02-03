@@ -52,13 +52,15 @@ pub fn tokenize(input: &str) -> Result<Vec<Token>, LexerError> {
 
     while let Some(&ch) = chars.peek() {
         match ch {
-            c if c.is_whitespace() => { chars.next(); }
+            c if c.is_whitespace() => {
+                chars.next();
+            }
             '"' => {
-                chars.next(); // consume opening quote
+                chars.next();
                 let mut s = String::new();
                 while let Some(&c) = chars.peek() {
                     if c == '"' {
-                        chars.next(); // consume closing quote
+                        chars.next();
                         break;
                     } else {
                         s.push(c);
@@ -77,20 +79,51 @@ pub fn tokenize(input: &str) -> Result<Vec<Token>, LexerError> {
                         break;
                     }
                 }
-                let number = num_str.parse::<f64>()
+                let number = num_str
+                    .parse::<f64>()
                     .map_err(|_| LexerError(format!("Invalid number: {}", num_str)))?;
                 tokens.push(Token::Number(number));
             }
-            '+' => { tokens.push(Token::Plus); chars.next(); }
-            '-' => { tokens.push(Token::Minus); chars.next(); }
-            '*' => { tokens.push(Token::Star); chars.next(); }
-            '/' => { tokens.push(Token::Slash); chars.next(); }
-            '(' => { tokens.push(Token::LParen); chars.next(); }
-            ')' => { tokens.push(Token::RParen); chars.next(); }
-            '{' => { tokens.push(Token::LBrace); chars.next(); }
-            '}' => { tokens.push(Token::RBrace); chars.next(); }
-            ':' => { tokens.push(Token::Colon); chars.next(); }
-            ',' => { tokens.push(Token::Comma); chars.next(); }
+            '+' => {
+                tokens.push(Token::Plus);
+                chars.next();
+            }
+            '-' => {
+                tokens.push(Token::Minus);
+                chars.next();
+            }
+            '*' => {
+                tokens.push(Token::Star);
+                chars.next();
+            }
+            '/' => {
+                tokens.push(Token::Slash);
+                chars.next();
+            }
+            '(' => {
+                tokens.push(Token::LParen);
+                chars.next();
+            }
+            ')' => {
+                tokens.push(Token::RParen);
+                chars.next();
+            }
+            '{' => {
+                tokens.push(Token::LBrace);
+                chars.next();
+            }
+            '}' => {
+                tokens.push(Token::RBrace);
+                chars.next();
+            }
+            ':' => {
+                tokens.push(Token::Colon);
+                chars.next();
+            }
+            ',' => {
+                tokens.push(Token::Comma);
+                chars.next();
+            }
             '!' => {
                 chars.next();
                 if let Some(&'=') = chars.peek() {
