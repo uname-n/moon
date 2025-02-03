@@ -1,5 +1,6 @@
 use crate::bytecode::Instruction;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {
@@ -26,8 +27,8 @@ impl std::fmt::Display for Value {
 pub struct Function {
     pub name: String,
     pub params: Vec<String>,
-    pub code: Vec<Instruction>,
-    pub constants: Vec<Value>,
+    pub code: Arc<Vec<Instruction>>,
+    pub constants: Arc<Vec<Value>>,
     pub base: usize,
     pub closure: Option<HashMap<String, Value>>,
 }

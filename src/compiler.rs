@@ -1,6 +1,7 @@
 use crate::ast::*;
 use crate::bytecode::Instruction;
 use crate::value::{Function, Value};
+use std::sync::Arc;
 
 pub struct Compiler {
     pub code: Vec<Instruction>,
@@ -109,24 +110,19 @@ impl Compiler {
             } => {
                 let mut func_compiler = Compiler::new();
                 func_compiler.is_top_level = false;
-
                 func_compiler.variables = params.iter().map(|(p, _)| p.clone()).collect();
-
                 for stmt in body {
                     func_compiler.compile_stmt(stmt);
                 }
-
                 let zero_idx = func_compiler.add_constant(Value::Number(0.0));
                 func_compiler.code.push(Instruction::LoadConst(zero_idx));
                 func_compiler.code.push(Instruction::Return);
-
                 let function_val = Value::Function(Function {
                     name: name.clone(),
                     params: params.iter().map(|(p, _)| p.clone()).collect(),
-                    code: func_compiler.code,
-                    constants: func_compiler.constants,
+                    code: Arc::new(func_compiler.code),
+                    constants: Arc::new(func_compiler.constants),
                     base: 0,
-
                     closure: if self.is_top_level {
                         None
                     } else {
@@ -134,7 +130,6 @@ impl Compiler {
                     },
                 });
                 let const_idx = self.add_constant(function_val);
-
                 self.code.push(Instruction::LoadConst(const_idx));
                 self.code.push(Instruction::StoreGlobal(name.clone()));
             }
@@ -148,12 +143,10 @@ impl Compiler {
                 self.code.push(Instruction::Return);
             }
             Stmt::Print(args) => {
+                self.code.push(Instruction::LoadGlobal("print".to_string()));
                 for arg in args.iter() {
                     self.compile_expr(arg);
                 }
-
-                self.code.push(Instruction::LoadGlobal("print".to_string()));
-
                 self.code.push(Instruction::Call(0, args.len()));
             }
         }
@@ -268,12 +261,10 @@ impl Compiler {
                 }
             },
             Expr::Call { callee, arguments } => {
+                self.compile_expr(callee);
                 for arg in arguments.iter() {
                     self.compile_expr(arg);
                 }
-
-                self.compile_expr(callee);
-
                 self.code.push(Instruction::Call(0, arguments.len()));
             }
         }
