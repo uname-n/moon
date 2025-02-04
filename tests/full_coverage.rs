@@ -933,7 +933,7 @@ fn test_vm_tail_call_user_function() {
 
 #[test]
 fn test_vm_tail_call_builtin_function() {
-    let builtin_dummy = Value::BuiltinFunction("dummy".to_string(), |args: &[Value]| -> Result<Value, VMError> {
+    let builtin_dummy = Value::BuiltinFunction("dummy".to_string(), |_args: &[Value]| -> Result<Value, VMError> {
         Ok(Value::Integer(BigInt::from(123)))
     });
     let f_instructions = vec![
