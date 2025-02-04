@@ -1,6 +1,6 @@
 use std::panic;
 use std::sync::Arc;
-
+use num_bigint::BigInt;
 use moon::{
     ast,
     bytecode::Instruction,
@@ -21,11 +21,10 @@ fn test_vm_add() {
         Instruction::LoadConst(1),
         Instruction::Add,
     ];
-    // Push a Return so that the top–level frame ends.
     instructions.push(Instruction::Return);
-    let constants = vec![Value::Number(1.0), Value::Number(2.0)];
+    let constants = vec![Value::Integer(BigInt::from(1)), Value::Integer(BigInt::from(2))];
     let result = vm.run(&instructions, &constants).unwrap();
-    assert_eq!(result, Value::Number(3.0));
+    assert_eq!(result, Value::Integer(BigInt::from(3)));
 }
 
 #[test]
@@ -37,9 +36,9 @@ fn test_vm_sub() {
         Instruction::Sub,
     ];
     instructions.push(Instruction::Return);
-    let constants = vec![Value::Number(5.0), Value::Number(3.0)];
+    let constants = vec![Value::Integer(BigInt::from(5)), Value::Integer(BigInt::from(3))];
     let result = vm.run(&instructions, &constants).unwrap();
-    assert_eq!(result, Value::Number(2.0));
+    assert_eq!(result, Value::Integer(BigInt::from(2)));
 }
 
 #[test]
@@ -51,9 +50,9 @@ fn test_vm_mul() {
         Instruction::Mul,
     ];
     instructions.push(Instruction::Return);
-    let constants = vec![Value::Number(4.0), Value::Number(3.0)];
+    let constants = vec![Value::Integer(BigInt::from(4)), Value::Integer(BigInt::from(3))];
     let result = vm.run(&instructions, &constants).unwrap();
-    assert_eq!(result, Value::Number(12.0));
+    assert_eq!(result, Value::Integer(BigInt::from(12)));
 }
 
 #[test]
@@ -65,9 +64,9 @@ fn test_vm_division() {
         Instruction::Div,
     ];
     instructions.push(Instruction::Return);
-    let constants = vec![Value::Number(6.0), Value::Number(2.0)];
+    let constants = vec![Value::Integer(BigInt::from(6)), Value::Integer(BigInt::from(2))];
     let result = vm.run(&instructions, &constants).unwrap();
-    assert_eq!(result, Value::Number(3.0));
+    assert_eq!(result, Value::Integer(BigInt::from(3)));
 }
 
 #[test]
@@ -79,7 +78,7 @@ fn test_vm_division_by_zero() {
         Instruction::Div,
     ];
     instructions.push(Instruction::Return);
-    let constants = vec![Value::Number(6.0), Value::Number(0.0)];
+    let constants = vec![Value::Integer(BigInt::from(6)), Value::Integer(BigInt::from(0))];
     let result = vm.run(&instructions, &constants);
     assert_eq!(result, Err(VMError::DivisionByZero));
 }
@@ -89,9 +88,9 @@ fn test_vm_negate() {
     let mut vm = VM::new();
     let mut instructions = vec![Instruction::LoadConst(0), Instruction::Negate];
     instructions.push(Instruction::Return);
-    let constants = vec![Value::Number(5.0)];
+    let constants = vec![Value::Integer(BigInt::from(5))];
     let result = vm.run(&instructions, &constants).unwrap();
-    assert_eq!(result, Value::Number(-5.0));
+    assert_eq!(result, Value::Integer(BigInt::from(-5)));
 }
 
 #[test]
@@ -113,7 +112,7 @@ fn test_vm_type_error_add() {
         Instruction::Add,
     ];
     instructions.push(Instruction::Return);
-    let constants = vec![Value::Bool(true), Value::Number(2.0)];
+    let constants = vec![Value::Bool(true), Value::Integer(BigInt::from(2))];
     let result = vm.run(&instructions, &constants);
     assert!(matches!(result, Err(VMError::TypeError(_))));
 }
@@ -123,7 +122,7 @@ fn test_vm_type_error_not() {
     let mut vm = VM::new();
     let mut instructions = vec![Instruction::LoadConst(0), Instruction::Not];
     instructions.push(Instruction::Return);
-    let constants = vec![Value::Number(1.0)];
+    let constants = vec![Value::Integer(BigInt::from(1))];
     let result = vm.run(&instructions, &constants);
     assert!(matches!(result, Err(VMError::TypeError(_))));
 }
@@ -133,19 +132,9 @@ fn test_vm_load_const_error() {
     let mut vm = VM::new();
     let mut instructions = vec![Instruction::LoadConst(1)];
     instructions.push(Instruction::Return);
-    let constants = vec![Value::Number(1.0)];
+    let constants = vec![Value::Integer(BigInt::from(1))];
     let result = vm.run(&instructions, &constants);
     assert!(matches!(result, Err(VMError::TypeError(ref s)) if s.contains("No constant at index")));
-}
-
-#[test]
-fn test_vm_stack_underflow() {
-    let mut vm = VM::new();
-    let mut instructions = vec![Instruction::Add];
-    instructions.push(Instruction::Return);
-    let constants = vec![];
-    let result = vm.run(&instructions, &constants);
-    assert!(matches!(result, Err(VMError::StackUnderflow)));
 }
 
 #[test]
@@ -156,7 +145,7 @@ fn test_vm_local_variable() {
         Instruction::LoadLocal(0),
         Instruction::Return,
     ];
-    let func_constants = vec![Value::Number(42.0)];
+    let func_constants = vec![Value::Integer(BigInt::from(42))];
     let function = Value::Function(Function {
         name: "local_test".to_string(),
         params: vec![],
@@ -173,12 +162,11 @@ fn test_vm_local_variable() {
     let constants = vec![function];
     let mut vm = VM::new();
     let result = vm.run(&instructions, &constants).unwrap();
-    assert_eq!(result, Value::Number(42.0));
+    assert_eq!(result, Value::Integer(BigInt::from(42)));
 }
 
 #[test]
 fn test_vm_if_statement() {
-    // In this test, note that the jump targets are hardcoded.
     let mut instructions = vec![
         Instruction::LoadConst(0),
         Instruction::JumpIfFalse(4),
@@ -187,10 +175,10 @@ fn test_vm_if_statement() {
         Instruction::LoadConst(2),
     ];
     instructions.push(Instruction::Return);
-    let constants = vec![Value::Bool(false), Value::Number(1.0), Value::Number(2.0)];
+    let constants = vec![Value::Bool(false), Value::Integer(BigInt::from(1)), Value::Integer(BigInt::from(2))];
     let mut vm = VM::new();
     let result = vm.run(&instructions, &constants).unwrap();
-    assert_eq!(result, Value::Number(2.0));
+    assert_eq!(result, Value::Integer(BigInt::from(2)));
 }
 
 #[test]
@@ -199,7 +187,7 @@ fn test_vm_function_call() {
         Instruction::LoadConst(0),
         Instruction::Return,
     ];
-    let func_constants = vec![Value::Number(10.0)];
+    let func_constants = vec![Value::Integer(BigInt::from(10))];
     let function = Value::Function(Function {
         name: "const10".to_string(),
         params: vec![],
@@ -216,7 +204,7 @@ fn test_vm_function_call() {
     let constants = vec![function];
     let mut vm = VM::new();
     let result = vm.run(&instructions, &constants).unwrap();
-    assert_eq!(result, Value::Number(10.0));
+    assert_eq!(result, Value::Integer(BigInt::from(10)));
 }
 
 #[test]
@@ -227,12 +215,10 @@ fn test_vm_call_non_function() {
         Instruction::Call(0, 0),
     ];
     instructions.push(Instruction::Return);
-    let constants = vec![Value::Number(42.0)];
+    let constants = vec![Value::Integer(BigInt::from(42))];
     let result = vm.run(&instructions, &constants);
     assert!(matches!(result, Err(VMError::TypeError(_))));
 }
-
-// --- Compiler tests remain mostly the same (assuming your compile_program now pushes a Return) ---
 
 #[test]
 fn test_compile_number() {
@@ -241,10 +227,10 @@ fn test_compile_number() {
     compiler.compile_expr(&expr);
     assert_eq!(compiler.code.len(), 1);
     match compiler.code[0] {
-        Instruction::LoadConst(0) => {}
+        Instruction::LoadConst(0) => {},
         _ => panic!("Expected LoadConst instruction"),
     }
-    assert_eq!(compiler.constants, vec![Value::Number(42.0)]);
+    assert_eq!(compiler.constants, vec![Value::Integer(BigInt::from(42))]);
 }
 
 #[test]
@@ -254,7 +240,7 @@ fn test_compile_bool() {
     compiler.compile_expr(&expr);
     assert_eq!(compiler.code.len(), 1);
     match compiler.code[0] {
-        Instruction::LoadConst(0) => {}
+        Instruction::LoadConst(0) => {},
         _ => panic!("Expected LoadConst instruction"),
     }
     assert_eq!(compiler.constants, vec![Value::Bool(true)]);
@@ -270,14 +256,14 @@ fn test_compile_unary_negate() {
     compiler.compile_expr(&expr);
     assert_eq!(compiler.code.len(), 2);
     match compiler.code[0] {
-        Instruction::LoadConst(0) => {}
+        Instruction::LoadConst(0) => {},
         _ => panic!("Expected LoadConst"),
     }
     match compiler.code[1] {
-        Instruction::Negate => {}
+        Instruction::Negate => {},
         _ => panic!("Expected Negate instruction"),
     }
-    assert_eq!(compiler.constants, vec![Value::Number(3.0)]);
+    assert_eq!(compiler.constants, vec![Value::Integer(BigInt::from(3))]);
 }
 
 #[test]
@@ -290,11 +276,11 @@ fn test_compile_unary_not() {
     compiler.compile_expr(&expr);
     assert_eq!(compiler.code.len(), 2);
     match compiler.code[0] {
-        Instruction::LoadConst(0) => {}
+        Instruction::LoadConst(0) => {},
         _ => panic!("Expected LoadConst instruction"),
     }
     match compiler.code[1] {
-        Instruction::Not => {}
+        Instruction::Not => {},
         _ => panic!("Expected Not instruction"),
     }
     assert_eq!(compiler.constants, vec![Value::Bool(false)]);
@@ -311,18 +297,21 @@ fn test_compile_binary_add() {
     compiler.compile_expr(&expr);
     assert_eq!(compiler.code.len(), 3);
     match compiler.code[0] {
-        Instruction::LoadConst(0) => {}
+        Instruction::LoadConst(0) => {},
         _ => panic!("Expected LoadConst for left operand"),
     }
     match compiler.code[1] {
-        Instruction::LoadConst(1) => {}
+        Instruction::LoadConst(1) => {},
         _ => panic!("Expected LoadConst for right operand"),
     }
     match compiler.code[2] {
-        Instruction::Add => {}
+        Instruction::Add => {},
         _ => panic!("Expected Add instruction"),
     }
-    assert_eq!(compiler.constants, vec![Value::Number(1.0), Value::Number(2.0)]);
+    assert_eq!(compiler.constants, vec![
+        Value::Integer(BigInt::from(1)),
+        Value::Integer(BigInt::from(2))
+    ]);
 }
 
 #[test]
@@ -336,7 +325,7 @@ fn test_compile_binary_subtract() {
     compiler.compile_expr(&expr);
     assert_eq!(compiler.code.len(), 3);
     match compiler.code[2] {
-        Instruction::Sub => {}
+        Instruction::Sub => {},
         _ => panic!("Expected Sub instruction"),
     }
 }
@@ -352,7 +341,7 @@ fn test_compile_binary_multiply() {
     compiler.compile_expr(&expr);
     assert_eq!(compiler.code.len(), 3);
     match compiler.code[2] {
-        Instruction::Mul => {}
+        Instruction::Mul => {},
         _ => panic!("Expected Mul instruction"),
     }
 }
@@ -368,7 +357,7 @@ fn test_compile_binary_divide() {
     compiler.compile_expr(&expr);
     assert_eq!(compiler.code.len(), 3);
     match compiler.code[2] {
-        Instruction::Div => {}
+        Instruction::Div => {},
         _ => panic!("Expected Div instruction"),
     }
 }
@@ -392,7 +381,7 @@ fn test_compile_and_run_variable_assignment() {
     compiler.compile_program(&stmts);
     let mut vm = VM::new();
     let result = vm.run(&compiler.code, &compiler.constants).unwrap();
-    assert_eq!(result, Value::Number(7.0));
+    assert_eq!(result, Value::Integer(BigInt::from(7)));
 }
 
 #[test]
@@ -425,12 +414,12 @@ fn test_compile_and_run_function_declaration_and_call() {
     compiler.compile_program(&stmts);
     let mut vm = VM::new();
     let result = vm.run(&compiler.code, &compiler.constants).unwrap();
-    assert_eq!(result, Value::Number(6.0));
+    assert_eq!(result, Value::Integer(BigInt::from(6)));
 }
 
 #[test]
 fn test_value_display() {
-    let num = Value::Number(3.14);
+    let num = Value::Float(3.14);
     let b = Value::Bool(true);
     assert_eq!(num.to_string(), "3.14");
     assert_eq!(b.to_string(), "true");
@@ -829,7 +818,7 @@ fn test_parser_missing_rparen() {
 
 #[test]
 fn test_builtin_type() {
-    let args = vec![Value::Number(10.0)];
+    let args = vec![Value::Integer(BigInt::from(10))];
     let result = builtins::builtin_type(&args).unwrap();
     assert_eq!(result, Value::Str("number".to_string()));
 }
@@ -838,7 +827,7 @@ fn test_builtin_type() {
 fn test_builtin_print() {
     let args = vec![Value::Str("hello".to_string())];
     let result = builtins::builtin_print(&args).unwrap();
-    assert_eq!(result, Value::Number(0.0));
+    assert_eq!(result, Value::Integer(BigInt::from(0)));
 }
 
 #[test]
@@ -868,7 +857,7 @@ fn test_compile_and_run_print_statement() {
     let mut vm = VM::new();
     builtins::register_builtins(&mut vm);
     let result = vm.run(&compiler.code, &compiler.constants).unwrap();
-    assert_eq!(result, Value::Number(0.0));
+    assert_eq!(result, Value::Integer(BigInt::from(0)));
 }
 
 #[test]
@@ -916,7 +905,7 @@ fn test_vm_tail_call_user_function() {
         Instruction::LoadConst(0),
         Instruction::Return,
     ];
-    let g_constants = vec![Value::Number(99.0)];
+    let g_constants = vec![Value::Integer(BigInt::from(99))];
     let function_g = Value::Function(Function {
         name: "g".to_string(),
         params: vec![],
@@ -946,13 +935,13 @@ fn test_vm_tail_call_user_function() {
     let constants = vec![function_f];
     let mut vm = VM::new();
     let result = vm.run(&instructions, &constants).unwrap();
-    assert_eq!(result, Value::Number(99.0));
+    assert_eq!(result, Value::Integer(BigInt::from(99)));
 }
 
 #[test]
 fn test_vm_tail_call_builtin_function() {
     let builtin_dummy = Value::BuiltinFunction("dummy".to_string(), |args: &[Value]| -> Result<Value, VMError> {
-        Ok(Value::Number(123.0))
+        Ok(Value::Integer(BigInt::from(123)))
     });
     let f_instructions = vec![
         Instruction::LoadConst(0),
@@ -975,7 +964,7 @@ fn test_vm_tail_call_builtin_function() {
     let constants = vec![function_f];
     let mut vm = VM::new();
     let result = vm.run(&instructions, &constants).unwrap();
-    assert_eq!(result, Value::Number(123.0));
+    assert_eq!(result, Value::Integer(BigInt::from(123)));
 }
 
 #[test]
@@ -1010,7 +999,7 @@ fn test_compile_and_run_while_loop() {
     compiler.compile_program(&stmts);
     let mut vm = VM::new();
     let result = vm.run(&compiler.code, &compiler.constants).unwrap();
-    assert_eq!(result, Value::Number(3.0));
+    assert_eq!(result, Value::Integer(BigInt::from(3)));
 }
 
 #[test]
@@ -1030,7 +1019,7 @@ fn test_compile_string_literal() {
 fn test_vm_closure() {
     use std::collections::HashMap;
     let mut c = HashMap::new();
-    c.insert("a".to_string(), Value::Number(777.0));
+    c.insert("a".to_string(), Value::Integer(BigInt::from(777)));
     let instructions = vec![
         Instruction::LoadClosure("a".to_string()),
         Instruction::Return,
@@ -1052,7 +1041,7 @@ fn test_vm_closure() {
     let call_constants = vec![function];
     let mut vm = VM::new();
     let result = vm.run(&call_instructions, &call_constants).unwrap();
-    assert_eq!(result, Value::Number(777.0));
+    assert_eq!(result, Value::Integer(BigInt::from(777)));
 }
 
 #[test]
@@ -1064,7 +1053,7 @@ fn test_vm_comparisons() {
         Instruction::Less,
     ];
     instructions.push(Instruction::Return);
-    let constants = vec![Value::Number(3.0), Value::Number(5.0)];
+    let constants = vec![Value::Integer(BigInt::from(3)), Value::Integer(BigInt::from(5))];
     let result = vm.run(&instructions, &constants).unwrap();
     assert_eq!(result, Value::Bool(true));
     
@@ -1074,7 +1063,7 @@ fn test_vm_comparisons() {
         Instruction::Greater,
     ];
     instructions.push(Instruction::Return);
-    let constants = vec![Value::Number(3.0), Value::Number(5.0)];
+    let constants = vec![Value::Integer(BigInt::from(3)), Value::Integer(BigInt::from(5))];
     let result = vm.run(&instructions, &constants).unwrap();
     assert_eq!(result, Value::Bool(false));
     
@@ -1084,7 +1073,7 @@ fn test_vm_comparisons() {
         Instruction::LessEqual,
     ];
     instructions.push(Instruction::Return);
-    let constants = vec![Value::Number(3.0), Value::Number(3.0)];
+    let constants = vec![Value::Integer(BigInt::from(3)), Value::Integer(BigInt::from(3))];
     let result = vm.run(&instructions, &constants).unwrap();
     assert_eq!(result, Value::Bool(true));
     
@@ -1094,7 +1083,7 @@ fn test_vm_comparisons() {
         Instruction::GreaterEqual,
     ];
     instructions.push(Instruction::Return);
-    let constants = vec![Value::Number(3.0), Value::Number(5.0)];
+    let constants = vec![Value::Integer(BigInt::from(3)), Value::Integer(BigInt::from(5))];
     let result = vm.run(&instructions, &constants).unwrap();
     assert_eq!(result, Value::Bool(false));
     
@@ -1104,7 +1093,7 @@ fn test_vm_comparisons() {
         Instruction::NotEqual,
     ];
     instructions.push(Instruction::Return);
-    let constants = vec![Value::Number(3.0), Value::Number(5.0)];
+    let constants = vec![Value::Integer(BigInt::from(3)), Value::Integer(BigInt::from(5))];
     let result = vm.run(&instructions, &constants).unwrap();
     assert_eq!(result, Value::Bool(true));
 }

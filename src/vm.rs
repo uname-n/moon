@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use std::fmt;
 use std::sync::Arc;
+use num_traits::{Zero, ToPrimitive};
+use num_bigint::BigInt;
 use crate::bytecode::Instruction;
 use crate::value::Value;
 
@@ -12,6 +14,7 @@ pub enum VMError {
     UndefinedVariable(String),
     ReturnValue(Value),
 }
+
 impl fmt::Display for VMError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -40,6 +43,7 @@ pub struct VM {
     pub stack: Vec<Value>,
     pub sp: usize,
 }
+
 impl VM {
     pub fn new() -> Self {
         Self {
@@ -65,7 +69,6 @@ impl VM {
             if self.call_stack.is_empty() {
                 break;
             }
-            // Execute instructions for the top frame until a control transfer occurs.
             let transferred = {
                 let frame = self.call_stack.last_mut().unwrap();
                 let mut control_transferred = false;
@@ -79,67 +82,28 @@ impl VM {
                             self.stack.push(val);
                         }
                         Instruction::Add => {
-                            let b = match self.stack.pop() {
-                                Some(Value::Number(n)) => n,
-                                Some(other) => return Err(VMError::TypeError(format!("Expected number, got {}", other))),
-                                None => return Err(VMError::StackUnderflow),
-                            };
-                            let a = match self.stack.pop() {
-                                Some(Value::Number(n)) => n,
-                                Some(other) => return Err(VMError::TypeError(format!("Expected number, got {}", other))),
-                                None => return Err(VMError::StackUnderflow),
-                            };
-                            self.stack.push(Value::Number(a + b));
+                            let b = self.stack.pop().ok_or(VMError::StackUnderflow)?;
+                            let a = self.stack.pop().ok_or(VMError::StackUnderflow)?;
+                            self.stack.push(VM::op_add(a, b)?);
                         }
                         Instruction::Sub => {
-                            let b = match self.stack.pop() {
-                                Some(Value::Number(n)) => n,
-                                Some(other) => return Err(VMError::TypeError(format!("Expected number, got {}", other))),
-                                None => return Err(VMError::StackUnderflow),
-                            };
-                            let a = match self.stack.pop() {
-                                Some(Value::Number(n)) => n,
-                                Some(other) => return Err(VMError::TypeError(format!("Expected number, got {}", other))),
-                                None => return Err(VMError::StackUnderflow),
-                            };
-                            self.stack.push(Value::Number(a - b));
+                            let b = self.stack.pop().ok_or(VMError::StackUnderflow)?;
+                            let a = self.stack.pop().ok_or(VMError::StackUnderflow)?;
+                            self.stack.push(VM::op_sub(a, b)?);
                         }
                         Instruction::Mul => {
-                            let b = match self.stack.pop() {
-                                Some(Value::Number(n)) => n,
-                                Some(other) => return Err(VMError::TypeError(format!("Expected number, got {}", other))),
-                                None => return Err(VMError::StackUnderflow),
-                            };
-                            let a = match self.stack.pop() {
-                                Some(Value::Number(n)) => n,
-                                Some(other) => return Err(VMError::TypeError(format!("Expected number, got {}", other))),
-                                None => return Err(VMError::StackUnderflow),
-                            };
-                            self.stack.push(Value::Number(a * b));
+                            let b = self.stack.pop().ok_or(VMError::StackUnderflow)?;
+                            let a = self.stack.pop().ok_or(VMError::StackUnderflow)?;
+                            self.stack.push(VM::op_mul(a, b)?);
                         }
                         Instruction::Div => {
-                            let b = match self.stack.pop() {
-                                Some(Value::Number(n)) => n,
-                                Some(other) => return Err(VMError::TypeError(format!("Expected number, got {}", other))),
-                                None => return Err(VMError::StackUnderflow),
-                            };
-                            if b == 0.0 {
-                                return Err(VMError::DivisionByZero);
-                            }
-                            let a = match self.stack.pop() {
-                                Some(Value::Number(n)) => n,
-                                Some(other) => return Err(VMError::TypeError(format!("Expected number, got {}", other))),
-                                None => return Err(VMError::StackUnderflow),
-                            };
-                            self.stack.push(Value::Number(a / b));
+                            let b = self.stack.pop().ok_or(VMError::StackUnderflow)?;
+                            let a = self.stack.pop().ok_or(VMError::StackUnderflow)?;
+                            self.stack.push(VM::op_div(a, b)?);
                         }
                         Instruction::Negate => {
-                            let n = match self.stack.pop() {
-                                Some(Value::Number(n)) => n,
-                                Some(other) => return Err(VMError::TypeError(format!("Expected number, got {}", other))),
-                                None => return Err(VMError::StackUnderflow),
-                            };
-                            self.stack.push(Value::Number(-n));
+                            let a = self.stack.pop().ok_or(VMError::StackUnderflow)?;
+                            self.stack.push(VM::op_negate(a)?);
                         }
                         Instruction::Not => {
                             let b = match self.stack.pop() {
@@ -152,64 +116,32 @@ impl VM {
                         Instruction::Equal => {
                             let b = self.stack.pop().ok_or(VMError::StackUnderflow)?;
                             let a = self.stack.pop().ok_or(VMError::StackUnderflow)?;
-                            self.stack.push(Value::Bool(a == b));
+                            self.stack.push(VM::op_equal(a, b)?);
                         }
                         Instruction::NotEqual => {
                             let b = self.stack.pop().ok_or(VMError::StackUnderflow)?;
                             let a = self.stack.pop().ok_or(VMError::StackUnderflow)?;
-                            self.stack.push(Value::Bool(a != b));
+                            self.stack.push(VM::op_not_equal(a, b)?);
                         }
                         Instruction::Less => {
-                            let b = match self.stack.pop() {
-                                Some(Value::Number(n)) => n,
-                                Some(other) => return Err(VMError::TypeError(format!("Expected number, got {}", other))),
-                                None => return Err(VMError::StackUnderflow),
-                            };
-                            let a = match self.stack.pop() {
-                                Some(Value::Number(n)) => n,
-                                Some(other) => return Err(VMError::TypeError(format!("Expected number, got {}", other))),
-                                None => return Err(VMError::StackUnderflow),
-                            };
-                            self.stack.push(Value::Bool(a < b));
+                            let b = self.stack.pop().ok_or(VMError::StackUnderflow)?;
+                            let a = self.stack.pop().ok_or(VMError::StackUnderflow)?;
+                            self.stack.push(VM::op_less(a, b)?);
                         }
                         Instruction::Greater => {
-                            let b = match self.stack.pop() {
-                                Some(Value::Number(n)) => n,
-                                Some(other) => return Err(VMError::TypeError(format!("Expected number, got {}", other))),
-                                None => return Err(VMError::StackUnderflow),
-                            };
-                            let a = match self.stack.pop() {
-                                Some(Value::Number(n)) => n,
-                                Some(other) => return Err(VMError::TypeError(format!("Expected number, got {}", other))),
-                                None => return Err(VMError::StackUnderflow),
-                            };
-                            self.stack.push(Value::Bool(a > b));
+                            let b = self.stack.pop().ok_or(VMError::StackUnderflow)?;
+                            let a = self.stack.pop().ok_or(VMError::StackUnderflow)?;
+                            self.stack.push(VM::op_greater(a, b)?);
                         }
                         Instruction::LessEqual => {
-                            let b = match self.stack.pop() {
-                                Some(Value::Number(n)) => n,
-                                Some(other) => return Err(VMError::TypeError(format!("Expected number, got {}", other))),
-                                None => return Err(VMError::StackUnderflow),
-                            };
-                            let a = match self.stack.pop() {
-                                Some(Value::Number(n)) => n,
-                                Some(other) => return Err(VMError::TypeError(format!("Expected number, got {}", other))),
-                                None => return Err(VMError::StackUnderflow),
-                            };
-                            self.stack.push(Value::Bool(a <= b));
+                            let b = self.stack.pop().ok_or(VMError::StackUnderflow)?;
+                            let a = self.stack.pop().ok_or(VMError::StackUnderflow)?;
+                            self.stack.push(VM::op_less_equal(a, b)?);
                         }
                         Instruction::GreaterEqual => {
-                            let b = match self.stack.pop() {
-                                Some(Value::Number(n)) => n,
-                                Some(other) => return Err(VMError::TypeError(format!("Expected number, got {}", other))),
-                                None => return Err(VMError::StackUnderflow),
-                            };
-                            let a = match self.stack.pop() {
-                                Some(Value::Number(n)) => n,
-                                Some(other) => return Err(VMError::TypeError(format!("Expected number, got {}", other))),
-                                None => return Err(VMError::StackUnderflow),
-                            };
-                            self.stack.push(Value::Bool(a >= b));
+                            let b = self.stack.pop().ok_or(VMError::StackUnderflow)?;
+                            let a = self.stack.pop().ok_or(VMError::StackUnderflow)?;
+                            self.stack.push(VM::op_greater_equal(a, b)?);
                         }
                         Instruction::LoadLocal(idx) => {
                             let val = frame.locals.get(idx)
@@ -222,7 +154,7 @@ impl VM {
                                 frame.locals[idx] = val;
                             } else {
                                 while frame.locals.len() < idx {
-                                    frame.locals.push(Value::Number(0.0));
+                                    frame.locals.push(Value::Integer(BigInt::zero()));
                                 }
                                 frame.locals.push(val);
                             }
@@ -359,7 +291,6 @@ impl VM {
             if transferred {
                 continue;
             }
-            // If the current frame ran to completion naturally, pop it.
             if let Some(frame) = self.call_stack.last() {
                 if frame.ip >= frame.code.len() {
                     let ret_val = self.stack.pop().ok_or(VMError::StackUnderflow)?;
@@ -373,5 +304,109 @@ impl VM {
             }
         }
         self.stack.pop().ok_or(VMError::StackUnderflow)
+    }
+
+    fn op_add(a: Value, b: Value) -> Result<Value, VMError> {
+        match (a, b) {
+            (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer(a + b)),
+            (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a + b)),
+            (Value::Integer(a), Value::Float(b)) => Ok(Value::Float(a.to_f64().unwrap() + b)),
+            (Value::Float(a), Value::Integer(b)) => Ok(Value::Float(a + b.to_f64().unwrap())),
+            _ => Err(VMError::TypeError("Add: expected number".to_string())),
+        }
+    }
+    fn op_sub(a: Value, b: Value) -> Result<Value, VMError> {
+        match (a, b) {
+            (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer(a - b)),
+            (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a - b)),
+            (Value::Integer(a), Value::Float(b)) => Ok(Value::Float(a.to_f64().unwrap() - b)),
+            (Value::Float(a), Value::Integer(b)) => Ok(Value::Float(a - b.to_f64().unwrap())),
+            _ => Err(VMError::TypeError("Sub: expected number".to_string())),
+        }
+    }
+    fn op_mul(a: Value, b: Value) -> Result<Value, VMError> {
+        match (a, b) {
+            (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer(a * b)),
+            (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a * b)),
+            (Value::Integer(a), Value::Float(b)) => Ok(Value::Float(a.to_f64().unwrap() * b)),
+            (Value::Float(a), Value::Integer(b)) => Ok(Value::Float(a * b.to_f64().unwrap())),
+            _ => Err(VMError::TypeError("Mul: expected number".to_string())),
+        }
+    }
+    fn op_div(a: Value, b: Value) -> Result<Value, VMError> {
+        match (a, b) {
+            (Value::Integer(a), Value::Integer(b)) => {
+                if b.is_zero() {
+                    Err(VMError::DivisionByZero)
+                } else {
+                    Ok(Value::Integer(a / b))
+                }
+            }
+            (Value::Float(a), Value::Float(b)) => {
+                if b == 0.0 {
+                    Err(VMError::DivisionByZero)
+                } else {
+                    Ok(Value::Float(a / b))
+                }
+            }
+            (Value::Integer(a), Value::Float(b)) => {
+                if b == 0.0 {
+                    Err(VMError::DivisionByZero)
+                } else {
+                    Ok(Value::Float(a.to_f64().unwrap() / b))
+                }
+            }
+            (Value::Float(a), Value::Integer(b)) => {
+                let b_float = b.to_f64().unwrap();
+                if b_float == 0.0 {
+                    Err(VMError::DivisionByZero)
+                } else {
+                    Ok(Value::Float(a / b_float))
+                }
+            }
+            _ => Err(VMError::TypeError("Div: expected number".to_string())),
+        }
+    }
+    fn op_negate(a: Value) -> Result<Value, VMError> {
+        match a {
+            Value::Integer(a) => Ok(Value::Integer(-a)),
+            Value::Float(a) => Ok(Value::Float(-a)),
+            _ => Err(VMError::TypeError("Negate: expected number".to_string())),
+        }
+    }
+    fn op_equal(a: Value, b: Value) -> Result<Value, VMError> {
+        Ok(Value::Bool(a == b))
+    }
+    fn op_not_equal(a: Value, b: Value) -> Result<Value, VMError> {
+        let eq = VM::op_equal(a, b)?;
+        if let Value::Bool(b) = eq {
+            Ok(Value::Bool(!b))
+        } else {
+            unreachable!()
+        }
+    }
+    fn op_less(a: Value, b: Value) -> Result<Value, VMError> {
+        match (a, b) {
+            (Value::Integer(a), Value::Integer(b)) => Ok(Value::Bool(a < b)),
+            (Value::Float(a), Value::Float(b)) => Ok(Value::Bool(a < b)),
+            (Value::Integer(a), Value::Float(b)) => Ok(Value::Bool(a.to_f64().unwrap() < b)),
+            (Value::Float(a), Value::Integer(b)) => Ok(Value::Bool(a < b.to_f64().unwrap())),
+            _ => Err(VMError::TypeError("Less: expected number".to_string())),
+        }
+    }
+    fn op_less_equal(a: Value, b: Value) -> Result<Value, VMError> {
+        match (a, b) {
+            (Value::Integer(a), Value::Integer(b)) => Ok(Value::Bool(a <= b)),
+            (Value::Float(a), Value::Float(b)) => Ok(Value::Bool(a <= b)),
+            (Value::Integer(a), Value::Float(b)) => Ok(Value::Bool(a.to_f64().unwrap() <= b)),
+            (Value::Float(a), Value::Integer(b)) => Ok(Value::Bool(a <= b.to_f64().unwrap())),
+            _ => Err(VMError::TypeError("LessEqual: expected number".to_string())),
+        }
+    }
+    fn op_greater(a: Value, b: Value) -> Result<Value, VMError> {
+        VM::op_less(b, a)
+    }
+    fn op_greater_equal(a: Value, b: Value) -> Result<Value, VMError> {
+        VM::op_less_equal(b, a)
     }
 }
