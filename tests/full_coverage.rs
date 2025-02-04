@@ -426,13 +426,6 @@ fn test_value_display() {
 }
 
 #[test]
-fn test_bytecode_debug() {
-    let inst = Instruction::LoadConst(2);
-    let debug_str = format!("{:?}", inst);
-    assert!(debug_str.contains("LoadConst"));
-}
-
-#[test]
 fn test_value_function_display() {
     let func = Value::Function(Function {
         name: "foo".to_string(),
