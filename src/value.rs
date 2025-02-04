@@ -2,7 +2,7 @@ use crate::bytecode::Instruction;
 use std::collections::HashMap;
 use std::sync::Arc;
 use num_bigint::BigInt;
-use num_traits::{Zero, One, ToPrimitive};
+use num_traits::ToPrimitive;
 
 #[derive(Clone, Debug)]
 pub enum Value {

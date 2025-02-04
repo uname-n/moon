@@ -88,9 +88,7 @@ impl<'a> Parser<'a> {
             self.advance();
             s
         } else {
-            return Err(ParserError(
-                "Expected identifier in variable declaration".into(),
-            ));
+            return Err(ParserError("Expected identifier in variable declaration".into()));
         };
         self.expect(&Token::Colon)?;
         let type_str = if let Some(Token::Identifier(t)) = self.current() {
@@ -100,7 +98,11 @@ impl<'a> Parser<'a> {
         } else {
             return Err(ParserError("Expected type identifier after ':'".into()));
         };
-        let var_type = TypeAnnotation::Builtin(type_str);
+        let var_type = match type_str.as_str() {
+            "int" => TypeAnnotation::Int,
+            "float" => TypeAnnotation::Float,
+            other => TypeAnnotation::Builtin(other.to_string()),
+        };
         let initializer = if let Some(Token::Eq) = self.current() {
             self.advance();
             Some(self.parse_expression()?)
@@ -181,7 +183,12 @@ impl<'a> Parser<'a> {
                 } else {
                     return Err(ParserError("Expected parameter type".into()));
                 };
-                params.push((param_name, TypeAnnotation::Builtin(type_str)));
+                let param_type = match type_str.as_str() {
+                    "int" => TypeAnnotation::Int,
+                    "float" => TypeAnnotation::Float,
+                    other => TypeAnnotation::Builtin(other.to_string()),
+                };
+                params.push((param_name, param_type));
                 if let Some(Token::Comma) = self.current() {
                     self.advance();
                 } else {
@@ -432,15 +439,10 @@ impl<'a> Parser<'a> {
                     self.expect(&Token::RParen)?;
                     Ok(expr)
                 }
-                _ => Err(ParserError(format!(
-                    "Unexpected token in primary: {:?}",
-                    tok
-                ))),
+                _ => Err(ParserError(format!("Unexpected token in primary: {:?}", tok))),
             }
         } else {
-            Err(ParserError(
-                "Unexpected end of tokens in primary expression".into(),
-            ))
+            Err(ParserError("Unexpected end of tokens in primary expression".into()))
         }
     }
 }

@@ -312,7 +312,7 @@ impl VM {
             (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a + b)),
             (Value::Integer(a), Value::Float(b)) => Ok(Value::Float(a.to_f64().unwrap() + b)),
             (Value::Float(a), Value::Integer(b)) => Ok(Value::Float(a + b.to_f64().unwrap())),
-            _ => Err(VMError::TypeError("Add: expected number".to_string())),
+            _ => Err(VMError::TypeError("Add: expected int or float operands".to_string())),
         }
     }
     fn op_sub(a: Value, b: Value) -> Result<Value, VMError> {
@@ -321,7 +321,7 @@ impl VM {
             (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a - b)),
             (Value::Integer(a), Value::Float(b)) => Ok(Value::Float(a.to_f64().unwrap() - b)),
             (Value::Float(a), Value::Integer(b)) => Ok(Value::Float(a - b.to_f64().unwrap())),
-            _ => Err(VMError::TypeError("Sub: expected number".to_string())),
+            _ => Err(VMError::TypeError("Sub: expected int or float operands".to_string())),
         }
     }
     fn op_mul(a: Value, b: Value) -> Result<Value, VMError> {
@@ -330,7 +330,7 @@ impl VM {
             (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a * b)),
             (Value::Integer(a), Value::Float(b)) => Ok(Value::Float(a.to_f64().unwrap() * b)),
             (Value::Float(a), Value::Integer(b)) => Ok(Value::Float(a * b.to_f64().unwrap())),
-            _ => Err(VMError::TypeError("Mul: expected number".to_string())),
+            _ => Err(VMError::TypeError("Mul: expected int or float operands".to_string())),
         }
     }
     fn op_div(a: Value, b: Value) -> Result<Value, VMError> {
@@ -364,14 +364,14 @@ impl VM {
                     Ok(Value::Float(a / b_float))
                 }
             }
-            _ => Err(VMError::TypeError("Div: expected number".to_string())),
+            _ => Err(VMError::TypeError("Div: expected int or float operands".to_string())),
         }
     }
     fn op_negate(a: Value) -> Result<Value, VMError> {
         match a {
             Value::Integer(a) => Ok(Value::Integer(-a)),
             Value::Float(a) => Ok(Value::Float(-a)),
-            _ => Err(VMError::TypeError("Negate: expected number".to_string())),
+            _ => Err(VMError::TypeError("Negate: expected int or float".to_string())),
         }
     }
     fn op_equal(a: Value, b: Value) -> Result<Value, VMError> {
@@ -391,7 +391,7 @@ impl VM {
             (Value::Float(a), Value::Float(b)) => Ok(Value::Bool(a < b)),
             (Value::Integer(a), Value::Float(b)) => Ok(Value::Bool(a.to_f64().unwrap() < b)),
             (Value::Float(a), Value::Integer(b)) => Ok(Value::Bool(a < b.to_f64().unwrap())),
-            _ => Err(VMError::TypeError("Less: expected number".to_string())),
+            _ => Err(VMError::TypeError("Less: expected int or float operands".to_string())),
         }
     }
     fn op_less_equal(a: Value, b: Value) -> Result<Value, VMError> {
@@ -400,7 +400,7 @@ impl VM {
             (Value::Float(a), Value::Float(b)) => Ok(Value::Bool(a <= b)),
             (Value::Integer(a), Value::Float(b)) => Ok(Value::Bool(a.to_f64().unwrap() <= b)),
             (Value::Float(a), Value::Integer(b)) => Ok(Value::Bool(a <= b.to_f64().unwrap())),
-            _ => Err(VMError::TypeError("LessEqual: expected number".to_string())),
+            _ => Err(VMError::TypeError("LessEqual: expected int or float operands".to_string())),
         }
     }
     fn op_greater(a: Value, b: Value) -> Result<Value, VMError> {

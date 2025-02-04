@@ -1,4 +1,4 @@
-use crate::ast::*;
+use crate::ast;
 use crate::bytecode::Instruction;
 use crate::value::{Function, Value};
 use std::sync::Arc;
@@ -20,37 +20,52 @@ impl Compiler {
             is_top_level: true,
         }
     }
-
     pub fn add_constant(&mut self, value: Value) -> usize {
         self.constants.push(value);
         self.constants.len() - 1
     }
-
     fn find_local(&self, name: &str) -> Option<usize> {
         self.variables.iter().position(|n| n == name)
     }
-
-    pub fn compile_program(&mut self, stmts: &[crate::ast::Stmt]) {
+    pub fn compile_program(&mut self, stmts: &[ast::Stmt]) {
         for stmt in stmts {
             self.compile_stmt(stmt);
         }
         self.code.push(Instruction::Return);
     }
-
-    pub fn compile_stmt(&mut self, stmt: &crate::ast::Stmt) {
+    pub fn compile_stmt(&mut self, stmt: &ast::Stmt) {
         match stmt {
-            crate::ast::Stmt::Expression(expr) => {
+            ast::Stmt::Expression(expr) => {
                 self.compile_expr(expr);
             }
-            crate::ast::Stmt::VariableDeclaration {
-                name,
-                initializer,
-                var_type: _,
-            } => {
+            ast::Stmt::VariableDeclaration { name, var_type, initializer } => {
                 if let Some(expr) = initializer {
-                    self.compile_expr(expr);
+                    if let ast::Expr::Number(n) = expr {
+                        match var_type {
+                            ast::TypeAnnotation::Int => {
+                                if n.fract() != 0.0 {
+                                    panic!("Type error: variable {} declared as int but initializer is a float literal", name);
+                                }
+                                let idx = self.add_constant(Value::Integer(BigInt::from(*n as i64)));
+                                self.code.push(Instruction::LoadConst(idx));
+                            }
+                            ast::TypeAnnotation::Float => {
+                                let idx = self.add_constant(Value::Float(*n));
+                                self.code.push(Instruction::LoadConst(idx));
+                            }
+                            _ => {
+                                self.compile_expr(expr);
+                            }
+                        }
+                    } else {
+                        self.compile_expr(expr);
+                    }
                 } else {
-                    let idx = self.add_constant(Value::Integer(BigInt::from(0)));
+                    let idx = match var_type {
+                        ast::TypeAnnotation::Int => self.add_constant(Value::Integer(BigInt::from(0))),
+                        ast::TypeAnnotation::Float => self.add_constant(Value::Float(0.0)),
+                        _ => self.add_constant(Value::Integer(BigInt::from(0))),
+                    };
                     self.code.push(Instruction::LoadConst(idx));
                 }
                 if self.is_top_level {
@@ -61,7 +76,7 @@ impl Compiler {
                     self.code.push(Instruction::StoreLocal(local_idx));
                 }
             }
-            crate::ast::Stmt::Assignment { name, expr } => {
+            ast::Stmt::Assignment { name, expr } => {
                 self.compile_expr(expr);
                 if let Some(local_idx) = self.find_local(name) {
                     self.code.push(Instruction::StoreLocal(local_idx));
@@ -69,11 +84,7 @@ impl Compiler {
                     self.code.push(Instruction::StoreGlobal(name.clone()));
                 }
             }
-            crate::ast::Stmt::If {
-                condition,
-                then_branch,
-                else_branch,
-            } => {
+            ast::Stmt::If { condition, then_branch, else_branch } => {
                 self.compile_expr(condition);
                 let jump_if_false_idx = self.code.len();
                 self.code.push(Instruction::JumpIfFalse(0));
@@ -92,7 +103,7 @@ impl Compiler {
                 let after_else = self.code.len();
                 self.code[jump_idx] = Instruction::Jump(after_else);
             }
-            crate::ast::Stmt::While { condition, body } => {
+            ast::Stmt::While { condition, body } => {
                 let loop_start = self.code.len();
                 self.compile_expr(condition);
                 let jump_idx = self.code.len();
@@ -104,12 +115,7 @@ impl Compiler {
                 let loop_end = self.code.len();
                 self.code[jump_idx] = Instruction::JumpIfFalse(loop_end);
             }
-            crate::ast::Stmt::FunctionDeclaration {
-                name,
-                params,
-                return_type: _,
-                body,
-            } => {
+            ast::Stmt::FunctionDeclaration { name, params, return_type: _, body } => {
                 let mut func_compiler = Compiler::new();
                 func_compiler.is_top_level = false;
                 func_compiler.variables = params.iter().map(|(p, _)| p.clone()).collect();
@@ -135,10 +141,10 @@ impl Compiler {
                 self.code.push(Instruction::LoadConst(const_idx));
                 self.code.push(Instruction::StoreGlobal(name.clone()));
             }
-            crate::ast::Stmt::Return(expr_opt) => {
+            ast::Stmt::Return(expr_opt) => {
                 if let Some(expr) = expr_opt {
                     match expr {
-                        crate::ast::Expr::Call { callee, arguments } => {
+                        ast::Expr::Call { callee, arguments } => {
                             self.compile_expr(callee);
                             for arg in arguments.iter() {
                                 self.compile_expr(arg);
@@ -156,7 +162,7 @@ impl Compiler {
                     self.code.push(Instruction::Return);
                 }
             }
-            crate::ast::Stmt::Print(args) => {
+            ast::Stmt::Print(args) => {
                 self.code.push(Instruction::LoadGlobal("print".to_string()));
                 for arg in args.iter() {
                     self.compile_expr(arg);
@@ -165,10 +171,9 @@ impl Compiler {
             }
         }
     }
-
-    pub fn compile_expr(&mut self, expr: &crate::ast::Expr) {
+    pub fn compile_expr(&mut self, expr: &ast::Expr) {
         match expr {
-            crate::ast::Expr::Number(n) => {
+            ast::Expr::Number(n) => {
                 let val = if n.fract() == 0.0 {
                     Value::Integer(BigInt::from(*n as i64))
                 } else {
@@ -177,30 +182,30 @@ impl Compiler {
                 let idx = self.add_constant(val);
                 self.code.push(Instruction::LoadConst(idx));
             }
-            crate::ast::Expr::Bool(b) => {
+            ast::Expr::Bool(b) => {
                 let idx = self.add_constant(Value::Bool(*b));
                 self.code.push(Instruction::LoadConst(idx));
             }
-            crate::ast::Expr::Str(s) => {
+            ast::Expr::Str(s) => {
                 let idx = self.add_constant(Value::Str(s.clone()));
                 self.code.push(Instruction::LoadConst(idx));
             }
-            crate::ast::Expr::Identifier(name) => {
+            ast::Expr::Identifier(name) => {
                 if let Some(local_idx) = self.find_local(name) {
                     self.code.push(Instruction::LoadLocal(local_idx));
                 } else {
                     self.code.push(Instruction::LoadGlobal(name.clone()));
                 }
             }
-            crate::ast::Expr::Unary { op, expr } => {
+            ast::Expr::Unary { op, expr } => {
                 self.compile_expr(expr);
                 match op {
-                    crate::ast::UnaryOp::Negate => self.code.push(Instruction::Negate),
-                    crate::ast::UnaryOp::Not => self.code.push(Instruction::Not),
+                    ast::UnaryOp::Negate => self.code.push(Instruction::Negate),
+                    ast::UnaryOp::Not => self.code.push(Instruction::Not),
                 }
             }
-            crate::ast::Expr::Binary { left, op, right } => match op {
-                crate::ast::BinaryOp::And => {
+            ast::Expr::Binary { left, op, right } => match op {
+                ast::BinaryOp::And => {
                     self.compile_expr(left);
                     let jump_if_false_idx = self.code.len();
                     self.code.push(Instruction::JumpIfFalse(0));
@@ -214,7 +219,7 @@ impl Compiler {
                     self.code[jump_if_false_idx] = Instruction::JumpIfFalse(false_label);
                     self.code[jump_to_end_idx] = Instruction::Jump(end_label);
                 }
-                crate::ast::BinaryOp::Or => {
+                ast::BinaryOp::Or => {
                     self.compile_expr(left);
                     let jump_if_true_idx = self.code.len();
                     self.code.push(Instruction::JumpIfTrue(0));
@@ -228,58 +233,58 @@ impl Compiler {
                     self.code[jump_if_true_idx] = Instruction::JumpIfTrue(true_label);
                     self.code[jump_to_end_idx] = Instruction::Jump(end_label);
                 }
-                crate::ast::BinaryOp::Add => {
+                ast::BinaryOp::Add => {
                     self.compile_expr(left);
                     self.compile_expr(right);
                     self.code.push(Instruction::Add);
                 }
-                crate::ast::BinaryOp::Subtract => {
+                ast::BinaryOp::Subtract => {
                     self.compile_expr(left);
                     self.compile_expr(right);
                     self.code.push(Instruction::Sub);
                 }
-                crate::ast::BinaryOp::Multiply => {
+                ast::BinaryOp::Multiply => {
                     self.compile_expr(left);
                     self.compile_expr(right);
                     self.code.push(Instruction::Mul);
                 }
-                crate::ast::BinaryOp::Divide => {
+                ast::BinaryOp::Divide => {
                     self.compile_expr(left);
                     self.compile_expr(right);
                     self.code.push(Instruction::Div);
                 }
-                crate::ast::BinaryOp::Equal => {
+                ast::BinaryOp::Equal => {
                     self.compile_expr(left);
                     self.compile_expr(right);
                     self.code.push(Instruction::Equal);
                 }
-                crate::ast::BinaryOp::NotEqual => {
+                ast::BinaryOp::NotEqual => {
                     self.compile_expr(left);
                     self.compile_expr(right);
                     self.code.push(Instruction::NotEqual);
                 }
-                crate::ast::BinaryOp::Less => {
+                ast::BinaryOp::Less => {
                     self.compile_expr(left);
                     self.compile_expr(right);
                     self.code.push(Instruction::Less);
                 }
-                crate::ast::BinaryOp::Greater => {
+                ast::BinaryOp::Greater => {
                     self.compile_expr(left);
                     self.compile_expr(right);
                     self.code.push(Instruction::Greater);
                 }
-                crate::ast::BinaryOp::LessEqual => {
+                ast::BinaryOp::LessEqual => {
                     self.compile_expr(left);
                     self.compile_expr(right);
                     self.code.push(Instruction::LessEqual);
                 }
-                crate::ast::BinaryOp::GreaterEqual => {
+                ast::BinaryOp::GreaterEqual => {
                     self.compile_expr(left);
                     self.compile_expr(right);
                     self.code.push(Instruction::GreaterEqual);
                 }
             },
-            crate::ast::Expr::Call { callee, arguments } => {
+            ast::Expr::Call { callee, arguments } => {
                 self.compile_expr(callee);
                 for arg in arguments.iter() {
                     self.compile_expr(arg);

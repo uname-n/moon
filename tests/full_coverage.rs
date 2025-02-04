@@ -368,7 +368,7 @@ fn test_compile_and_run_variable_assignment() {
     let stmts = vec![
         Stmt::VariableDeclaration {
             name: "x".to_string(),
-            var_type: TypeAnnotation::Builtin("number".to_string()),
+            var_type: TypeAnnotation::Int,
             initializer: Some(Expr::Number(5.0)),
         },
         Stmt::Assignment {
@@ -390,8 +390,8 @@ fn test_compile_and_run_function_declaration_and_call() {
     let stmts = vec![
         Stmt::FunctionDeclaration {
             name: "add_one".to_string(),
-            params: vec![("n".to_string(), TypeAnnotation::Builtin("number".to_string()))],
-            return_type: Some(TypeAnnotation::Builtin("number".to_string())),
+            params: vec![("n".to_string(), TypeAnnotation::Int)],
+            return_type: Some(TypeAnnotation::Int),
             body: vec![
                 Stmt::Return(Some(Expr::Binary {
                     left: Box::new(Expr::Identifier("n".to_string())),
@@ -402,7 +402,7 @@ fn test_compile_and_run_function_declaration_and_call() {
         },
         Stmt::VariableDeclaration {
             name: "result".to_string(),
-            var_type: TypeAnnotation::Builtin("number".to_string()),
+            var_type: TypeAnnotation::Int,
             initializer: Some(Expr::Call {
                 callee: Box::new(Expr::Identifier("add_one".to_string())),
                 arguments: vec![Expr::Number(5.0)],
@@ -659,7 +659,7 @@ fn test_parser_variable_declaration() {
     let tokens = vec![
         lexer::Token::Identifier("x".to_string()),
         lexer::Token::Colon,
-        lexer::Token::Identifier("number".to_string()),
+        lexer::Token::Identifier("int".to_string()),
         lexer::Token::Eq,
         lexer::Token::Number(10.0),
     ];
@@ -668,8 +668,8 @@ fn test_parser_variable_declaration() {
         ast::Stmt::VariableDeclaration { name, var_type, initializer } => {
             assert_eq!(name, "x");
             match var_type {
-                ast::TypeAnnotation::Builtin(s) => assert_eq!(s, "number"),
-                _ => panic!("Expected builtin type"),
+                ast::TypeAnnotation::Int => {},
+                _ => panic!("Expected int type"),
             }
             match initializer {
                 Some(ast::Expr::Number(n)) => assert_eq!(*n, 10.0),
@@ -820,7 +820,7 @@ fn test_parser_missing_rparen() {
 fn test_builtin_type() {
     let args = vec![Value::Integer(BigInt::from(10))];
     let result = builtins::builtin_type(&args).unwrap();
-    assert_eq!(result, Value::Str("number".to_string()));
+    assert_eq!(result, Value::Str("int".to_string()));
 }
 
 #[test]
@@ -866,7 +866,7 @@ fn test_top_level_compiler_global_declaration_instructions() {
     let mut compiler = Compiler::new();
     let stmt = Stmt::VariableDeclaration {
         name: "a".to_string(),
-        var_type: TypeAnnotation::Builtin("number".to_string()),
+        var_type: TypeAnnotation::Int,
         initializer: Some(Expr::Number(10.0)),
     };
     compiler.compile_stmt(&stmt);
@@ -973,7 +973,7 @@ fn test_compile_and_run_while_loop() {
     let stmts = vec![
         Stmt::VariableDeclaration {
             name: "x".to_string(),
-            var_type: TypeAnnotation::Builtin("number".to_string()),
+            var_type: TypeAnnotation::Int,
             initializer: Some(Expr::Number(0.0)),
         },
         Stmt::While {
