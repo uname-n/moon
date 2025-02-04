@@ -65,15 +65,17 @@ pub enum BinaryOp {
     Equal,
     NotEqual,
     Less,
-    LessEqual,
     Greater,
+    LessEqual,
     GreaterEqual,
     And,
     Or,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TypeAnnotation {
+    Int,
+    Float,
     Builtin(String),
     Custom(String),
 }

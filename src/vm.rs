@@ -1,8 +1,11 @@
 use std::collections::HashMap;
 use std::fmt;
-
+use std::sync::Arc;
+use num_traits::{Zero, ToPrimitive};
+use num_bigint::BigInt;
 use crate::bytecode::Instruction;
 use crate::value::Value;
+use crate::jit::JitCompiler;
 
 #[derive(Debug, PartialEq)]
 pub enum VMError {
@@ -24,13 +27,12 @@ impl fmt::Display for VMError {
         }
     }
 }
-
 impl std::error::Error for VMError {}
 
-struct CallFrame {
-    pub code: Vec<Instruction>,
+pub struct CallFrame {
+    pub code: Arc<Vec<Instruction>>,
     pub ip: usize,
-    pub constants: Vec<Value>,
+    pub constants: Arc<Vec<Value>>,
     pub locals: Vec<Value>,
     pub _base: usize,
     pub closure: HashMap<String, Value>,
@@ -38,10 +40,10 @@ struct CallFrame {
 
 pub struct VM {
     pub globals: HashMap<String, Value>,
-
-    call_stack: Vec<CallFrame>,
-
-    stack: Vec<Value>,
+    pub call_stack: Vec<CallFrame>,
+    pub stack: Vec<Value>,
+    pub sp: usize,
+    pub instruction_count: usize,
 }
 
 impl VM {
@@ -49,421 +51,370 @@ impl VM {
         Self {
             globals: HashMap::new(),
             call_stack: Vec::new(),
-            stack: Vec::new(),
+            stack: Vec::with_capacity(1024),
+            sp: 0,
+            instruction_count: 0,
         }
     }
-
     pub fn define_global(&mut self, name: &str, value: Value) {
         self.globals.insert(name.to_string(), value);
     }
-
-    fn pop_number(&mut self) -> Result<f64, VMError> {
-        match self.stack.pop().ok_or(VMError::StackUnderflow)? {
-            Value::Number(n) => Ok(n),
-            other => Err(VMError::TypeError(format!(
-                "Expected number, got {}",
-                other
-            ))),
-        }
-    }
-
-    fn pop_bool(&mut self) -> Result<bool, VMError> {
-        match self.stack.pop().ok_or(VMError::StackUnderflow)? {
-            Value::Bool(b) => Ok(b),
-            other => Err(VMError::TypeError(format!("Expected bool, got {}", other))),
-        }
-    }
-
     pub fn run(&mut self, code: &[Instruction], constants: &[Value]) -> Result<Value, VMError> {
-        let mut ip = 0;
-        while ip < code.len() {
-            let instr = code[ip].clone();
-            ip += 1;
-            match instr {
-                Instruction::LoadConst(idx) => {
-                    let val = constants
-                        .get(idx)
-                        .ok_or_else(|| VMError::TypeError(format!("No constant at index {}", idx)))?
-                        .clone();
-                    self.stack.push(val);
-                }
-                Instruction::Add => {
-                    let b = self.pop_number()?;
-                    let a = self.pop_number()?;
-                    self.stack.push(Value::Number(a + b));
-                }
-                Instruction::Sub => {
-                    let b = self.pop_number()?;
-                    let a = self.pop_number()?;
-                    self.stack.push(Value::Number(a - b));
-                }
-                Instruction::Mul => {
-                    let b = self.pop_number()?;
-                    let a = self.pop_number()?;
-                    self.stack.push(Value::Number(a * b));
-                }
-                Instruction::Div => {
-                    let b = self.pop_number()?;
-                    if b == 0.0 {
-                        return Err(VMError::DivisionByZero);
-                    }
-                    let a = self.pop_number()?;
-                    self.stack.push(Value::Number(a / b));
-                }
-                Instruction::Negate => {
-                    let n = self.pop_number()?;
-                    self.stack.push(Value::Number(-n));
-                }
-                Instruction::Not => {
-                    let b = self.pop_bool()?;
-                    self.stack.push(Value::Bool(!b));
-                }
-                Instruction::Equal => {
-                    let b = self.stack.pop().ok_or(VMError::StackUnderflow)?;
-                    let a = self.stack.pop().ok_or(VMError::StackUnderflow)?;
-                    self.stack.push(Value::Bool(a == b));
-                }
-                Instruction::NotEqual => {
-                    let b = self.stack.pop().ok_or(VMError::StackUnderflow)?;
-                    let a = self.stack.pop().ok_or(VMError::StackUnderflow)?;
-                    self.stack.push(Value::Bool(a != b));
-                }
-                Instruction::Less => {
-                    let b = self.pop_number()?;
-                    let a = self.pop_number()?;
-                    self.stack.push(Value::Bool(a < b));
-                }
-                Instruction::Greater => {
-                    let b = self.pop_number()?;
-                    let a = self.pop_number()?;
-                    self.stack.push(Value::Bool(a > b));
-                }
-                Instruction::LessEqual => {
-                    let b = self.pop_number()?;
-                    let a = self.pop_number()?;
-                    self.stack.push(Value::Bool(a <= b));
-                }
-                Instruction::GreaterEqual => {
-                    let b = self.pop_number()?;
-                    let a = self.pop_number()?;
-                    self.stack.push(Value::Bool(a >= b));
-                }
-                Instruction::LoadLocal(_idx) => {
-                    return Err(VMError::TypeError("LoadLocal in top-level".to_string()));
-                }
-                Instruction::StoreLocal(_idx) => {
-                    return Err(VMError::TypeError("StoreLocal in top-level".to_string()));
-                }
-                Instruction::LoadGlobal(name) => {
-                    let val = self
-                        .globals
-                        .get(&name)
-                        .ok_or_else(|| VMError::UndefinedVariable(name.clone()))?;
-                    self.stack.push(val.clone());
-                }
-                Instruction::StoreGlobal(name) => {
-                    let val = self.stack.pop().ok_or(VMError::StackUnderflow)?;
-                    self.globals.insert(name.clone(), val);
-                }
-                Instruction::LoadClosure(name) => {
-                    if let Some(frame) = self.call_stack.last() {
-                        let val = frame
-                            .closure
-                            .get(&name)
-                            .ok_or_else(|| VMError::UndefinedVariable(name.clone()))?;
-                        self.stack.push(val.clone());
-                    } else {
-                        return Err(VMError::UndefinedVariable(name));
-                    }
-                }
-                Instruction::StoreClosure(name) => {
-                    let val = self.stack.pop().ok_or(VMError::StackUnderflow)?;
-                    if let Some(frame) = self.call_stack.last_mut() {
-                        frame.closure.insert(name.clone(), val);
-                    } else {
-                        return Err(VMError::UndefinedVariable(name));
-                    }
-                }
-                Instruction::Jump(target) => {
-                    ip = target;
-                }
-                Instruction::JumpIfFalse(target) => {
-                    let cond = self.pop_bool()?;
-                    if !cond {
-                        ip = target;
-                    }
-                }
-                Instruction::JumpIfTrue(target) => {
-                    let cond = self.pop_bool()?;
-                    if cond {
-                        ip = target;
-                    }
-                }
-                Instruction::Call(_func_idx, arg_count) => {
-                    let func_val = self.stack.pop().ok_or(VMError::StackUnderflow)?;
-                    match func_val {
-                        Value::Function(mut func) => {
-                            let mut args = Vec::new();
-                            for _ in 0..arg_count {
-                                args.push(self.stack.pop().ok_or(VMError::StackUnderflow)?);
-                            }
-                            args.reverse();
-                            let closure = if let Some(c) = func.closure.take() {
-                                c
-                            } else if let Some(frame) = self.call_stack.last() {
-                                frame.closure.clone()
+        let jit_compiler = JitCompiler::new();
+        if let Some(compiled_fn) = jit_compiler.compile(code, constants) {
+            return compiled_fn(&self.stack).map_err(|_| VMError::ReturnValue(Value::Integer(BigInt::from(0))));
+        }
+        self.call_stack.push(CallFrame {
+            code: Arc::new(code.to_vec()),
+            ip: 0,
+            constants: Arc::new(constants.to_vec()),
+            locals: Vec::new(),
+            _base: 0,
+            closure: HashMap::new(),
+        });
+        loop {
+            if self.call_stack.is_empty() {
+                break;
+            }
+            let transferred = {
+                let frame = self.call_stack.last_mut().unwrap();
+                let mut control_transferred = false;
+                while frame.ip < frame.code.len() {
+                    self.instruction_count += 1;
+                    let instr = unsafe { frame.code.get_unchecked(frame.ip) }.clone();
+                    frame.ip += 1;
+                    match instr {
+                        Instruction::LoadConst(idx) => {
+                            let val = frame.constants.get(idx)
+                                .ok_or_else(|| VMError::TypeError(format!("No constant at index {}", idx)))?.clone();
+                            self.stack.push(val);
+                        }
+                        Instruction::Add => {
+                            let b = self.stack.pop().ok_or(VMError::StackUnderflow)?;
+                            let a = self.stack.pop().ok_or(VMError::StackUnderflow)?;
+                            self.stack.push(VM::op_add(a, b)?);
+                        }
+                        Instruction::Sub => {
+                            let b = self.stack.pop().ok_or(VMError::StackUnderflow)?;
+                            let a = self.stack.pop().ok_or(VMError::StackUnderflow)?;
+                            self.stack.push(VM::op_sub(a, b)?);
+                        }
+                        Instruction::Mul => {
+                            let b = self.stack.pop().ok_or(VMError::StackUnderflow)?;
+                            let a = self.stack.pop().ok_or(VMError::StackUnderflow)?;
+                            self.stack.push(VM::op_mul(a, b)?);
+                        }
+                        Instruction::Div => {
+                            let b = self.stack.pop().ok_or(VMError::StackUnderflow)?;
+                            let a = self.stack.pop().ok_or(VMError::StackUnderflow)?;
+                            self.stack.push(VM::op_div(a, b)?);
+                        }
+                        Instruction::Negate => {
+                            let a = self.stack.pop().ok_or(VMError::StackUnderflow)?;
+                            self.stack.push(VM::op_negate(a)?);
+                        }
+                        Instruction::Not => {
+                            let b = match self.stack.pop() {
+                                Some(Value::Bool(b)) => b,
+                                Some(other) => return Err(VMError::TypeError(format!("Expected bool, got {}", other))),
+                                None => return Err(VMError::StackUnderflow),
+                            };
+                            self.stack.push(Value::Bool(!b));
+                        }
+                        Instruction::Equal => {
+                            let b = self.stack.pop().ok_or(VMError::StackUnderflow)?;
+                            let a = self.stack.pop().ok_or(VMError::StackUnderflow)?;
+                            self.stack.push(VM::op_equal(a, b)?);
+                        }
+                        Instruction::NotEqual => {
+                            let b = self.stack.pop().ok_or(VMError::StackUnderflow)?;
+                            let a = self.stack.pop().ok_or(VMError::StackUnderflow)?;
+                            self.stack.push(VM::op_not_equal(a, b)?);
+                        }
+                        Instruction::Less => {
+                            let b = self.stack.pop().ok_or(VMError::StackUnderflow)?;
+                            let a = self.stack.pop().ok_or(VMError::StackUnderflow)?;
+                            self.stack.push(VM::op_less(a, b)?);
+                        }
+                        Instruction::Greater => {
+                            let b = self.stack.pop().ok_or(VMError::StackUnderflow)?;
+                            let a = self.stack.pop().ok_or(VMError::StackUnderflow)?;
+                            self.stack.push(VM::op_greater(a, b)?);
+                        }
+                        Instruction::LessEqual => {
+                            let b = self.stack.pop().ok_or(VMError::StackUnderflow)?;
+                            let a = self.stack.pop().ok_or(VMError::StackUnderflow)?;
+                            self.stack.push(VM::op_less_equal(a, b)?);
+                        }
+                        Instruction::GreaterEqual => {
+                            let b = self.stack.pop().ok_or(VMError::StackUnderflow)?;
+                            let a = self.stack.pop().ok_or(VMError::StackUnderflow)?;
+                            self.stack.push(VM::op_greater_equal(a, b)?);
+                        }
+                        Instruction::LoadLocal(idx) => {
+                            let val = frame.locals.get(idx)
+                                .ok_or_else(|| VMError::UndefinedVariable(format!("local#{}", idx)))?.clone();
+                            self.stack.push(val);
+                        }
+                        Instruction::StoreLocal(idx) => {
+                            let val = self.stack.pop().ok_or(VMError::StackUnderflow)?;
+                            if idx < frame.locals.len() {
+                                frame.locals[idx] = val;
                             } else {
-                                HashMap::new()
-                            };
-                            let frame = CallFrame {
-                                code: func.code.clone(),
-                                ip: 0,
-                                constants: func.constants.clone(),
-                                locals: args,
-                                _base: func.base,
-                                closure,
-                            };
-                            self.call_stack.push(frame);
-                            let ret = self.run_frame()?;
-                            self.stack.push(ret);
-                        }
-                        Value::BuiltinFunction(_, f) => {
-                            let mut args = Vec::new();
-                            for _ in 0..arg_count {
-                                args.push(self.stack.pop().ok_or(VMError::StackUnderflow)?);
+                                while frame.locals.len() < idx {
+                                    frame.locals.push(Value::Integer(BigInt::zero()));
+                                }
+                                frame.locals.push(val);
                             }
-                            args.reverse();
-                            let ret = f(&args)?;
-                            self.stack.push(ret);
                         }
-                        other => {
-                            return Err(VMError::TypeError(format!(
-                                "Call of non-function: {}",
-                                other
-                            )));
+                        Instruction::LoadGlobal(ref name) => {
+                            let val = self.globals.get(name)
+                                .ok_or_else(|| VMError::UndefinedVariable(name.clone()))?.clone();
+                            self.stack.push(val);
+                        }
+                        Instruction::StoreGlobal(ref name) => {
+                            let val = self.stack.pop().ok_or(VMError::StackUnderflow)?;
+                            self.globals.insert(name.clone(), val);
+                        }
+                        Instruction::LoadClosure(ref name) => {
+                            let val = frame.closure.get(name)
+                                .cloned()
+                                .ok_or_else(|| VMError::UndefinedVariable(name.clone()))?;
+                            self.stack.push(val);
+                        }
+                        Instruction::StoreClosure(ref name) => {
+                            let val = self.stack.pop().ok_or(VMError::StackUnderflow)?;
+                            frame.closure.insert(name.clone(), val);
+                        }
+                        Instruction::Jump(target) => {
+                            frame.ip = target;
+                        }
+                        Instruction::JumpIfFalse(target) => {
+                            let cond = match self.stack.pop() {
+                                Some(Value::Bool(b)) => b,
+                                Some(other) => return Err(VMError::TypeError(format!("Expected bool, got {}", other))),
+                                None => return Err(VMError::StackUnderflow),
+                            };
+                            if !cond {
+                                frame.ip = target;
+                            }
+                        }
+                        Instruction::JumpIfTrue(target) => {
+                            let cond = match self.stack.pop() {
+                                Some(Value::Bool(b)) => b,
+                                Some(other) => return Err(VMError::TypeError(format!("Expected bool, got {}", other))),
+                                None => return Err(VMError::StackUnderflow),
+                            };
+                            if cond {
+                                frame.ip = target;
+                            }
+                        }
+                        Instruction::Call(_, arg_count) => {
+                            if self.stack.len() < arg_count + 1 {
+                                return Err(VMError::StackUnderflow);
+                            }
+                            let func_index = self.stack.len() - arg_count - 1;
+                            let func_val = self.stack.remove(func_index);
+                            let args: Vec<Value> = self.stack.drain(self.stack.len()-arg_count..).collect();
+                            match func_val {
+                                Value::Function(ref func) => {
+                                    let new_frame = CallFrame {
+                                        code: func.code.clone(),
+                                        ip: 0,
+                                        constants: func.constants.clone(),
+                                        locals: args,
+                                        _base: func.base,
+                                        closure: func.closure.clone().unwrap_or_else(|| frame.closure.clone()),
+                                    };
+                                    self.call_stack.push(new_frame);
+                                    control_transferred = true;
+                                    break;
+                                }
+                                Value::BuiltinFunction(_, builtin_fn) => {
+                                    let ret = builtin_fn(&args)?;
+                                    self.stack.push(ret);
+                                    control_transferred = true;
+                                    break;
+                                }
+                                other => return Err(VMError::TypeError(format!("Attempted to call non-function: {}", other))),
+                            }
+                        }
+                        Instruction::TailCall(_, arg_count) => {
+                            if self.stack.len() < arg_count + 1 {
+                                return Err(VMError::StackUnderflow);
+                            }
+                            let func_index = self.stack.len() - arg_count - 1;
+                            let func_val = self.stack.remove(func_index);
+                            let args: Vec<Value> = self.stack.drain(self.stack.len()-arg_count..).collect();
+                            match func_val {
+                                Value::Function(ref func) => {
+                                    self.call_stack.pop();
+                                    let parent_closure = if let Some(caller) = self.call_stack.last() {
+                                        caller.closure.clone()
+                                    } else {
+                                        HashMap::new()
+                                    };
+                                    let new_closure = func.closure.clone().unwrap_or(parent_closure);
+                                    let new_frame = CallFrame {
+                                        code: func.code.clone(),
+                                        ip: 0,
+                                        constants: func.constants.clone(),
+                                        locals: args,
+                                        _base: func.base,
+                                        closure: new_closure,
+                                    };
+                                    self.call_stack.push(new_frame);
+                                    control_transferred = true;
+                                    break;
+                                }
+                                Value::BuiltinFunction(_, builtin_fn) => {
+                                    let ret = builtin_fn(&args)?;
+                                    self.call_stack.pop();
+                                    self.stack.push(ret);
+                                    control_transferred = true;
+                                    break;
+                                }
+                                other => return Err(VMError::TypeError(format!("Attempted to tail call non-function: {}", other))),
+                            }
+                        }
+                        Instruction::Return => {
+                            let ret_val = self.stack.pop().ok_or(VMError::StackUnderflow)?;
+                            self.call_stack.pop();
+                            if self.call_stack.is_empty() {
+                                self.stack.push(ret_val);
+                                return self.stack.pop().ok_or(VMError::StackUnderflow);
+                            } else {
+                                self.stack.push(ret_val);
+                            }
+                            control_transferred = true;
+                            break;
+                        }
+                        Instruction::Pop => {
+                            self.stack.pop().ok_or(VMError::StackUnderflow)?;
                         }
                     }
                 }
-                Instruction::Pop => {
-                    self.stack.pop().ok_or(VMError::StackUnderflow)?;
-                }
-                Instruction::Return => {
-                    let val = self.stack.pop().ok_or(VMError::StackUnderflow)?;
-                    return Err(VMError::ReturnValue(val));
+                control_transferred
+            };
+            if transferred {
+                continue;
+            }
+            if let Some(frame) = self.call_stack.last() {
+                if frame.ip >= frame.code.len() {
+                    let ret_val = self.stack.pop().ok_or(VMError::StackUnderflow)?;
+                    self.call_stack.pop();
+                    if self.call_stack.is_empty() {
+                        return Ok(ret_val);
+                    } else {
+                        self.stack.push(ret_val);
+                    }
                 }
             }
         }
         self.stack.pop().ok_or(VMError::StackUnderflow)
     }
 
-    fn run_frame(&mut self) -> Result<Value, VMError> {
-        loop {
-            let instr = {
-                let frame = self.call_stack.last_mut().ok_or(VMError::StackUnderflow)?;
-                if frame.ip >= frame.code.len() {
-                    return Err(VMError::StackUnderflow);
-                }
-                let i = frame.code[frame.ip].clone();
-                frame.ip += 1;
-                i
-            };
-            match instr {
-                Instruction::LoadConst(idx) => {
-                    let frame = self.call_stack.last().ok_or(VMError::StackUnderflow)?;
-                    let val = frame
-                        .constants
-                        .get(idx)
-                        .ok_or_else(|| VMError::TypeError(format!("No constant at index {}", idx)))?
-                        .clone();
-                    self.stack.push(val);
-                }
-                Instruction::Add => {
-                    let b = self.pop_number()?;
-                    let a = self.pop_number()?;
-                    self.stack.push(Value::Number(a + b));
-                }
-                Instruction::Sub => {
-                    let b = self.pop_number()?;
-                    let a = self.pop_number()?;
-                    self.stack.push(Value::Number(a - b));
-                }
-                Instruction::Mul => {
-                    let b = self.pop_number()?;
-                    let a = self.pop_number()?;
-                    self.stack.push(Value::Number(a * b));
-                }
-                Instruction::Div => {
-                    let b = self.pop_number()?;
-                    if b == 0.0 {
-                        return Err(VMError::DivisionByZero);
-                    }
-                    let a = self.pop_number()?;
-                    self.stack.push(Value::Number(a / b));
-                }
-                Instruction::Negate => {
-                    let n = self.pop_number()?;
-                    self.stack.push(Value::Number(-n));
-                }
-                Instruction::Not => {
-                    let b = self.pop_bool()?;
-                    self.stack.push(Value::Bool(!b));
-                }
-                Instruction::Equal => {
-                    let b = self.stack.pop().ok_or(VMError::StackUnderflow)?;
-                    let a = self.stack.pop().ok_or(VMError::StackUnderflow)?;
-                    self.stack.push(Value::Bool(a == b));
-                }
-                Instruction::NotEqual => {
-                    let b = self.stack.pop().ok_or(VMError::StackUnderflow)?;
-                    let a = self.stack.pop().ok_or(VMError::StackUnderflow)?;
-                    self.stack.push(Value::Bool(a != b));
-                }
-                Instruction::Less => {
-                    let b = self.pop_number()?;
-                    let a = self.pop_number()?;
-                    self.stack.push(Value::Bool(a < b));
-                }
-                Instruction::Greater => {
-                    let b = self.pop_number()?;
-                    let a = self.pop_number()?;
-                    self.stack.push(Value::Bool(a > b));
-                }
-                Instruction::LessEqual => {
-                    let b = self.pop_number()?;
-                    let a = self.pop_number()?;
-                    self.stack.push(Value::Bool(a <= b));
-                }
-                Instruction::GreaterEqual => {
-                    let b = self.pop_number()?;
-                    let a = self.pop_number()?;
-                    self.stack.push(Value::Bool(a >= b));
-                }
-                Instruction::LoadLocal(idx) => {
-                    let frame = self.call_stack.last().ok_or(VMError::StackUnderflow)?;
-                    let val = frame
-                        .locals
-                        .get(idx)
-                        .ok_or_else(|| VMError::UndefinedVariable(format!("local#{}", idx)))?
-                        .clone();
-                    self.stack.push(val);
-                }
-                Instruction::StoreLocal(idx) => {
-                    let val = self.stack.pop().ok_or(VMError::StackUnderflow)?;
-                    let frame = self.call_stack.last_mut().ok_or(VMError::StackUnderflow)?;
-                    if idx < frame.locals.len() {
-                        frame.locals[idx] = val;
-                    } else {
-                        while frame.locals.len() < idx {
-                            frame.locals.push(Value::Number(0.0));
-                        }
-                        frame.locals.push(val);
-                    }
-                }
-                Instruction::LoadGlobal(name) => {
-                    let val = self
-                        .globals
-                        .get(&name)
-                        .ok_or_else(|| VMError::UndefinedVariable(name.clone()))?;
-                    self.stack.push(val.clone());
-                }
-                Instruction::StoreGlobal(name) => {
-                    let val = self.stack.pop().ok_or(VMError::StackUnderflow)?;
-                    self.globals.insert(name.clone(), val);
-                }
-                Instruction::LoadClosure(name) => {
-                    if let Some(frame) = self.call_stack.last() {
-                        let val = frame
-                            .closure
-                            .get(&name)
-                            .ok_or_else(|| VMError::UndefinedVariable(name.clone()))?;
-                        self.stack.push(val.clone());
-                    } else {
-                        return Err(VMError::UndefinedVariable(name));
-                    }
-                }
-                Instruction::StoreClosure(name) => {
-                    let val = self.stack.pop().ok_or(VMError::StackUnderflow)?;
-                    if let Some(frame) = self.call_stack.last_mut() {
-                        frame.closure.insert(name.clone(), val);
-                    } else {
-                        return Err(VMError::UndefinedVariable(name));
-                    }
-                }
-                Instruction::Jump(target) => {
-                    let frame = self.call_stack.last_mut().ok_or(VMError::StackUnderflow)?;
-                    frame.ip = target;
-                    continue;
-                }
-                Instruction::JumpIfFalse(target) => {
-                    let cond = self.pop_bool()?;
-                    if !cond {
-                        let frame = self.call_stack.last_mut().ok_or(VMError::StackUnderflow)?;
-                        frame.ip = target;
-                        continue;
-                    }
-                }
-                Instruction::JumpIfTrue(target) => {
-                    let cond = self.pop_bool()?;
-                    if cond {
-                        let frame = self.call_stack.last_mut().ok_or(VMError::StackUnderflow)?;
-                        frame.ip = target;
-                        continue;
-                    }
-                }
-                Instruction::Call(_func_idx, arg_count) => {
-                    let func_val = self.stack.pop().ok_or(VMError::StackUnderflow)?;
-                    match func_val {
-                        Value::Function(mut func) => {
-                            let mut args = Vec::new();
-                            for _ in 0..arg_count {
-                                args.push(self.stack.pop().ok_or(VMError::StackUnderflow)?);
-                            }
-                            args.reverse();
-                            let closure = if let Some(c) = func.closure.take() {
-                                c
-                            } else if let Some(frame) = self.call_stack.last() {
-                                frame.closure.clone()
-                            } else {
-                                HashMap::new()
-                            };
-                            let new_frame = CallFrame {
-                                code: func.code.clone(),
-                                ip: 0,
-                                constants: func.constants.clone(),
-                                locals: args,
-                                _base: func.base,
-                                closure,
-                            };
-                            self.call_stack.push(new_frame);
-                            let ret = self.run_frame()?;
-                            self.stack.push(ret);
-                        }
-                        Value::BuiltinFunction(_, builtin) => {
-                            let mut args = Vec::new();
-                            for _ in 0..arg_count {
-                                args.push(self.stack.pop().ok_or(VMError::StackUnderflow)?);
-                            }
-                            args.reverse();
-                            let ret = builtin(&args)?;
-                            self.stack.push(ret);
-                        }
-                        other => {
-                            return Err(VMError::TypeError(format!(
-                                "Attempted to call non-function: {}",
-                                other
-                            )));
-                        }
-                    }
-                }
-                Instruction::Pop => {
-                    self.stack.pop().ok_or(VMError::StackUnderflow)?;
-                }
-                Instruction::Return => {
-                    let val = self.stack.pop().ok_or(VMError::StackUnderflow)?;
-                    self.call_stack.pop();
-                    return Ok(val);
+    pub fn op_add(a: Value, b: Value) -> Result<Value, VMError> {
+        match (a, b) {
+            (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer(a + b)),
+            (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a + b)),
+            (Value::Integer(a), Value::Float(b)) => Ok(Value::Float(a.to_f64().unwrap() + b)),
+            (Value::Float(a), Value::Integer(b)) => Ok(Value::Float(a + b.to_f64().unwrap())),
+            _ => Err(VMError::TypeError("Add: expected int or float operands".to_string())),
+        }
+    }
+    pub fn op_sub(a: Value, b: Value) -> Result<Value, VMError> {
+        match (a, b) {
+            (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer(a - b)),
+            (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a - b)),
+            (Value::Integer(a), Value::Float(b)) => Ok(Value::Float(a.to_f64().unwrap() - b)),
+            (Value::Float(a), Value::Integer(b)) => Ok(Value::Float(a - b.to_f64().unwrap())),
+            _ => Err(VMError::TypeError("Sub: expected int or float operands".to_string())),
+        }
+    }
+    pub fn op_mul(a: Value, b: Value) -> Result<Value, VMError> {
+        match (a, b) {
+            (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer(a * b)),
+            (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a * b)),
+            (Value::Integer(a), Value::Float(b)) => Ok(Value::Float(a.to_f64().unwrap() * b)),
+            (Value::Float(a), Value::Integer(b)) => Ok(Value::Float(a * b.to_f64().unwrap())),
+            _ => Err(VMError::TypeError("Mul: expected int or float operands".to_string())),
+        }
+    }
+    pub fn op_div(a: Value, b: Value) -> Result<Value, VMError> {
+        match (a, b) {
+            (Value::Integer(a), Value::Integer(b)) => {
+                if b.is_zero() {
+                    Err(VMError::DivisionByZero)
+                } else {
+                    Ok(Value::Integer(a / b))
                 }
             }
+            (Value::Float(a), Value::Float(b)) => {
+                if b == 0.0 {
+                    Err(VMError::DivisionByZero)
+                } else {
+                    Ok(Value::Float(a / b))
+                }
+            }
+            (Value::Integer(a), Value::Float(b)) => {
+                if b == 0.0 {
+                    Err(VMError::DivisionByZero)
+                } else {
+                    Ok(Value::Float(a.to_f64().unwrap() / b))
+                }
+            }
+            (Value::Float(a), Value::Integer(b)) => {
+                let b_float = b.to_f64().unwrap();
+                if b_float == 0.0 {
+                    Err(VMError::DivisionByZero)
+                } else {
+                    Ok(Value::Float(a / b_float))
+                }
+            }
+            _ => Err(VMError::TypeError("Div: expected int or float operands".to_string())),
         }
+    }
+    pub fn op_negate(a: Value) -> Result<Value, VMError> {
+        match a {
+            Value::Integer(a) => Ok(Value::Integer(-a)),
+            Value::Float(a) => Ok(Value::Float(-a)),
+            _ => Err(VMError::TypeError("Negate: expected int or float".to_string())),
+        }
+    }
+    pub fn op_equal(a: Value, b: Value) -> Result<Value, VMError> {
+        Ok(Value::Bool(a == b))
+    }
+    pub fn op_not_equal(a: Value, b: Value) -> Result<Value, VMError> {
+        let eq = VM::op_equal(a, b)?;
+        if let Value::Bool(b) = eq {
+            Ok(Value::Bool(!b))
+        } else {
+            unreachable!()
+        }
+    }
+    pub fn op_less(a: Value, b: Value) -> Result<Value, VMError> {
+        match (a, b) {
+            (Value::Integer(a), Value::Integer(b)) => Ok(Value::Bool(a < b)),
+            (Value::Float(a), Value::Float(b)) => Ok(Value::Bool(a < b)),
+            (Value::Integer(a), Value::Float(b)) => Ok(Value::Bool(a.to_f64().unwrap() < b)),
+            (Value::Float(a), Value::Integer(b)) => Ok(Value::Bool(a < b.to_f64().unwrap())),
+            _ => Err(VMError::TypeError("Less: expected int or float operands".to_string())),
+        }
+    }
+    pub fn op_less_equal(a: Value, b: Value) -> Result<Value, VMError> {
+        match (a, b) {
+            (Value::Integer(a), Value::Integer(b)) => Ok(Value::Bool(a <= b)),
+            (Value::Float(a), Value::Float(b)) => Ok(Value::Bool(a <= b)),
+            (Value::Integer(a), Value::Float(b)) => Ok(Value::Bool(a.to_f64().unwrap() <= b)),
+            (Value::Float(a), Value::Integer(b)) => Ok(Value::Bool(a <= b.to_f64().unwrap())),
+            _ => Err(VMError::TypeError("LessEqual: expected int or float operands".to_string())),
+        }
+    }
+    pub fn op_greater(a: Value, b: Value) -> Result<Value, VMError> {
+        VM::op_less(b, a)
+    }
+    pub fn op_greater_equal(a: Value, b: Value) -> Result<Value, VMError> {
+        VM::op_less_equal(b, a)
     }
 }

@@ -29,6 +29,7 @@ pub enum Instruction {
     JumpIfTrue(usize),
 
     Call(usize, usize),
+    TailCall(usize, usize),
     Return,
 
     Pop,
