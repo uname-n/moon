@@ -5,6 +5,7 @@ use num_traits::{Zero, ToPrimitive};
 use num_bigint::BigInt;
 use crate::bytecode::Instruction;
 use crate::value::Value;
+use crate::jit::JitCompiler;
 
 #[derive(Debug, PartialEq)]
 pub enum VMError {
@@ -42,6 +43,7 @@ pub struct VM {
     pub call_stack: Vec<CallFrame>,
     pub stack: Vec<Value>,
     pub sp: usize,
+    pub instruction_count: usize,
 }
 
 impl VM {
@@ -51,12 +53,17 @@ impl VM {
             call_stack: Vec::new(),
             stack: Vec::with_capacity(1024),
             sp: 0,
+            instruction_count: 0,
         }
     }
     pub fn define_global(&mut self, name: &str, value: Value) {
         self.globals.insert(name.to_string(), value);
     }
     pub fn run(&mut self, code: &[Instruction], constants: &[Value]) -> Result<Value, VMError> {
+        let jit_compiler = JitCompiler::new();
+        if let Some(compiled_fn) = jit_compiler.compile(code, constants) {
+            return compiled_fn(&self.stack).map_err(|_| VMError::ReturnValue(Value::Integer(BigInt::from(0))));
+        }
         self.call_stack.push(CallFrame {
             code: Arc::new(code.to_vec()),
             ip: 0,
@@ -73,6 +80,7 @@ impl VM {
                 let frame = self.call_stack.last_mut().unwrap();
                 let mut control_transferred = false;
                 while frame.ip < frame.code.len() {
+                    self.instruction_count += 1;
                     let instr = unsafe { frame.code.get_unchecked(frame.ip) }.clone();
                     frame.ip += 1;
                     match instr {
@@ -306,7 +314,7 @@ impl VM {
         self.stack.pop().ok_or(VMError::StackUnderflow)
     }
 
-    fn op_add(a: Value, b: Value) -> Result<Value, VMError> {
+    pub fn op_add(a: Value, b: Value) -> Result<Value, VMError> {
         match (a, b) {
             (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer(a + b)),
             (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a + b)),
@@ -315,7 +323,7 @@ impl VM {
             _ => Err(VMError::TypeError("Add: expected int or float operands".to_string())),
         }
     }
-    fn op_sub(a: Value, b: Value) -> Result<Value, VMError> {
+    pub fn op_sub(a: Value, b: Value) -> Result<Value, VMError> {
         match (a, b) {
             (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer(a - b)),
             (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a - b)),
@@ -324,7 +332,7 @@ impl VM {
             _ => Err(VMError::TypeError("Sub: expected int or float operands".to_string())),
         }
     }
-    fn op_mul(a: Value, b: Value) -> Result<Value, VMError> {
+    pub fn op_mul(a: Value, b: Value) -> Result<Value, VMError> {
         match (a, b) {
             (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer(a * b)),
             (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a * b)),
@@ -333,7 +341,7 @@ impl VM {
             _ => Err(VMError::TypeError("Mul: expected int or float operands".to_string())),
         }
     }
-    fn op_div(a: Value, b: Value) -> Result<Value, VMError> {
+    pub fn op_div(a: Value, b: Value) -> Result<Value, VMError> {
         match (a, b) {
             (Value::Integer(a), Value::Integer(b)) => {
                 if b.is_zero() {
@@ -367,17 +375,17 @@ impl VM {
             _ => Err(VMError::TypeError("Div: expected int or float operands".to_string())),
         }
     }
-    fn op_negate(a: Value) -> Result<Value, VMError> {
+    pub fn op_negate(a: Value) -> Result<Value, VMError> {
         match a {
             Value::Integer(a) => Ok(Value::Integer(-a)),
             Value::Float(a) => Ok(Value::Float(-a)),
             _ => Err(VMError::TypeError("Negate: expected int or float".to_string())),
         }
     }
-    fn op_equal(a: Value, b: Value) -> Result<Value, VMError> {
+    pub fn op_equal(a: Value, b: Value) -> Result<Value, VMError> {
         Ok(Value::Bool(a == b))
     }
-    fn op_not_equal(a: Value, b: Value) -> Result<Value, VMError> {
+    pub fn op_not_equal(a: Value, b: Value) -> Result<Value, VMError> {
         let eq = VM::op_equal(a, b)?;
         if let Value::Bool(b) = eq {
             Ok(Value::Bool(!b))
@@ -385,7 +393,7 @@ impl VM {
             unreachable!()
         }
     }
-    fn op_less(a: Value, b: Value) -> Result<Value, VMError> {
+    pub fn op_less(a: Value, b: Value) -> Result<Value, VMError> {
         match (a, b) {
             (Value::Integer(a), Value::Integer(b)) => Ok(Value::Bool(a < b)),
             (Value::Float(a), Value::Float(b)) => Ok(Value::Bool(a < b)),
@@ -394,7 +402,7 @@ impl VM {
             _ => Err(VMError::TypeError("Less: expected int or float operands".to_string())),
         }
     }
-    fn op_less_equal(a: Value, b: Value) -> Result<Value, VMError> {
+    pub fn op_less_equal(a: Value, b: Value) -> Result<Value, VMError> {
         match (a, b) {
             (Value::Integer(a), Value::Integer(b)) => Ok(Value::Bool(a <= b)),
             (Value::Float(a), Value::Float(b)) => Ok(Value::Bool(a <= b)),
@@ -403,10 +411,10 @@ impl VM {
             _ => Err(VMError::TypeError("LessEqual: expected int or float operands".to_string())),
         }
     }
-    fn op_greater(a: Value, b: Value) -> Result<Value, VMError> {
+    pub fn op_greater(a: Value, b: Value) -> Result<Value, VMError> {
         VM::op_less(b, a)
     }
-    fn op_greater_equal(a: Value, b: Value) -> Result<Value, VMError> {
+    pub fn op_greater_equal(a: Value, b: Value) -> Result<Value, VMError> {
         VM::op_less_equal(b, a)
     }
 }

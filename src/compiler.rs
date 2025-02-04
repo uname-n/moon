@@ -3,6 +3,7 @@ use crate::bytecode::Instruction;
 use crate::value::{Function, Value};
 use std::sync::Arc;
 use num_bigint::BigInt;
+use crate::optimizer;
 
 pub struct Compiler {
     pub code: Vec<Instruction>,
@@ -32,6 +33,10 @@ impl Compiler {
             self.compile_stmt(stmt);
         }
         self.code.push(Instruction::Return);
+        let (opt_code, opt_constants) =
+            optimizer::optimize_bytecode(self.code.clone(), self.constants.clone());
+        self.code = opt_code;
+        self.constants = opt_constants;
     }
     pub fn compile_stmt(&mut self, stmt: &ast::Stmt) {
         match stmt {

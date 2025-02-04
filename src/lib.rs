@@ -6,3 +6,7 @@ pub mod parser;
 pub mod vm;
 pub mod value;
 pub mod builtins;
+pub mod optimizer;
+pub mod jit;
+pub mod profiler;
+pub mod disassembler;
