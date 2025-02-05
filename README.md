@@ -12,16 +12,16 @@ Moon is a small, statically-typed, interpreted language with first-class functio
 • **Profiler**: Times program execution, print results in microseconds.  
 
 ### USAGE
-
+```
 To run a Moon script:
     moon <script.moon>
 
 Optional flags:
     --disassemble  Show compiled bytecode.  
     --profile      Measure execution time and print results.
+```
 
 ### EXAMPLE
-
 Given a script:
 ```
 x: int = 5
