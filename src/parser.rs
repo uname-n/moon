@@ -39,10 +39,7 @@ impl<'a> Parser<'a> {
                 self.advance();
                 Ok(())
             } else {
-                Err(ParserError(format!(
-                    "Expected {:?}, got {:?}",
-                    expected, token
-                )))
+                Err(ParserError(format!("Expected {:?}, got {:?}", expected, token)))
             }
         } else {
             Err(ParserError("Unexpected end of tokens".into()))
@@ -109,11 +106,7 @@ impl<'a> Parser<'a> {
         } else {
             None
         };
-        Ok(Stmt::VariableDeclaration {
-            name,
-            var_type,
-            initializer,
-        })
+        Ok(Stmt::VariableDeclaration { name, var_type, initializer })
     }
 
     fn parse_assignment(&mut self) -> Result<Stmt, ParserError> {
@@ -139,11 +132,7 @@ impl<'a> Parser<'a> {
         } else {
             None
         };
-        Ok(Stmt::If {
-            condition,
-            then_branch,
-            else_branch,
-        })
+        Ok(Stmt::If { condition, then_branch, else_branch })
     }
 
     fn parse_while_statement(&mut self) -> Result<Stmt, ParserError> {
@@ -198,12 +187,7 @@ impl<'a> Parser<'a> {
         }
         self.expect(&Token::RParen)?;
         let body = self.parse_block()?;
-        Ok(Stmt::FunctionDeclaration {
-            name,
-            params,
-            return_type: None,
-            body,
-        })
+        Ok(Stmt::FunctionDeclaration { name, params, return_type: None, body })
     }
 
     fn parse_return_statement(&mut self) -> Result<Stmt, ParserError> {

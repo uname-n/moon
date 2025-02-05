@@ -313,7 +313,6 @@ impl VM {
         }
         self.stack.pop().ok_or(VMError::StackUnderflow)
     }
-
     pub fn op_add(a: Value, b: Value) -> Result<Value, VMError> {
         match (a, b) {
             (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer(a + b)),

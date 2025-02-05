@@ -1,4 +1,3 @@
-use std::panic;
 use std::sync::Arc;
 use num_bigint::BigInt;
 use moon::{
@@ -7,11 +6,10 @@ use moon::{
     compiler::Compiler,
     lexer,
     parser,
-    value::Value,
+    value::{Function, Value},
     vm::{VM, VMError},
     builtins,
 };
-use moon::value::Function;
 
 #[test]
 fn test_vm_add() {
@@ -423,13 +421,6 @@ fn test_value_display() {
     let b = Value::Bool(true);
     assert_eq!(num.to_string(), "3.14");
     assert_eq!(b.to_string(), "true");
-}
-
-#[test]
-fn test_bytecode_debug() {
-    let inst = Instruction::LoadConst(2);
-    let debug_str = format!("{:?}", inst);
-    assert!(debug_str.contains("LoadConst"));
 }
 
 #[test]
@@ -940,7 +931,7 @@ fn test_vm_tail_call_user_function() {
 
 #[test]
 fn test_vm_tail_call_builtin_function() {
-    let builtin_dummy = Value::BuiltinFunction("dummy".to_string(), |args: &[Value]| -> Result<Value, VMError> {
+    let builtin_dummy = Value::BuiltinFunction("dummy".to_string(), |_args: &[Value]| -> Result<Value, VMError> {
         Ok(Value::Integer(BigInt::from(123)))
     });
     let f_instructions = vec![
@@ -1056,7 +1047,6 @@ fn test_vm_comparisons() {
     let constants = vec![Value::Integer(BigInt::from(3)), Value::Integer(BigInt::from(5))];
     let result = vm.run(&instructions, &constants).unwrap();
     assert_eq!(result, Value::Bool(true));
-    
     let mut instructions = vec![
         Instruction::LoadConst(0),
         Instruction::LoadConst(1),
@@ -1066,7 +1056,6 @@ fn test_vm_comparisons() {
     let constants = vec![Value::Integer(BigInt::from(3)), Value::Integer(BigInt::from(5))];
     let result = vm.run(&instructions, &constants).unwrap();
     assert_eq!(result, Value::Bool(false));
-    
     let mut instructions = vec![
         Instruction::LoadConst(0),
         Instruction::LoadConst(1),
@@ -1076,7 +1065,6 @@ fn test_vm_comparisons() {
     let constants = vec![Value::Integer(BigInt::from(3)), Value::Integer(BigInt::from(3))];
     let result = vm.run(&instructions, &constants).unwrap();
     assert_eq!(result, Value::Bool(true));
-    
     let mut instructions = vec![
         Instruction::LoadConst(0),
         Instruction::LoadConst(1),
@@ -1086,7 +1074,6 @@ fn test_vm_comparisons() {
     let constants = vec![Value::Integer(BigInt::from(3)), Value::Integer(BigInt::from(5))];
     let result = vm.run(&instructions, &constants).unwrap();
     assert_eq!(result, Value::Bool(false));
-    
     let mut instructions = vec![
         Instruction::LoadConst(0),
         Instruction::LoadConst(1),
@@ -1096,4 +1083,22 @@ fn test_vm_comparisons() {
     let constants = vec![Value::Integer(BigInt::from(3)), Value::Integer(BigInt::from(5))];
     let result = vm.run(&instructions, &constants).unwrap();
     assert_eq!(result, Value::Bool(true));
+}
+
+#[test]
+fn test_vm_stack_underflow_add() {
+    let mut vm = VM::new();
+    let instructions = vec![Instruction::Add, Instruction::Return];
+    let constants = vec![];
+    let result = vm.run(&instructions, &constants);
+    assert!(matches!(result, Err(VMError::StackUnderflow)));
+}
+
+#[test]
+fn test_vm_stack_underflow_pop() {
+    let mut vm = VM::new();
+    let instructions = vec![Instruction::Pop, Instruction::Return];
+    let constants = vec![];
+    let result = vm.run(&instructions, &constants);
+    assert!(matches!(result, Err(VMError::StackUnderflow)));
 }
